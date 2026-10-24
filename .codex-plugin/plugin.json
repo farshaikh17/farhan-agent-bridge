@@ -1,0 +1,22 @@
+{
+  "interface": {
+    "capabilities": [],
+    "category": "Productivity",
+    "composerIcon": "./assets/icon.svg",
+    "defaultPrompt": "Check the bridge status, then delegate a small test to my separately signed-in Codex account.",
+    "developerName": "Farhan Shaikh",
+    "displayName": "Farhan Agent Bridge",
+    "logo": "./assets/icon.svg",
+    "longDescription": "Run on the Windows desktop. Check Codex and Claude subscription sign-in, submit one local background task, and retrieve its final answer and provider-reported usage. Codex keeps its dedicated read-only workspace. Claude uses official Claude Code, a dedicated subscription login, no shell or local-file tools, and optional public web research. No paid API fallback or Google integration is configured. Computer must stay awake and online. Subscription allowances remain separate; a dedicated login folder alone does not prove a different account.",
+    "shortDescription": "Use your Codex and Claude plans"
+  },
+  "requires_local_executor": true,
+  "name": "farhan-agent-bridge",
+  "version": "0.2.0",
+  "description": "Delegate local tasks through existing Codex and Claude subscriptions, with separate authentication and retrieved results.",
+  "author": {
+    "name": "Farhan Shaikh"
+  },
+  "keywords": [],
+  "mcpServers": "./.mcp.json"
+}

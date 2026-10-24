@@ -1,0 +1,14 @@
+{
+  "name": "farhan-agent-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Local Windows MCP delegation through official Codex and Claude Code subscription logins",
+  "type": "module",
+  "license": "MIT",
+  "engines": {"node": ">=20"},
+  "scripts": {
+    "start": "node server/bridge.mjs",
+    "check": "node --check server/bridge.mjs",
+    "test": "node --test tests/protocol.test.mjs"
+  }
+}

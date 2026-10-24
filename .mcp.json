@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "codex-delegation": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/server/bridge.mjs"
+      ],
+      "env": {},
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}
