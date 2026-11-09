@@ -24,8 +24,8 @@ else {
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true}={}) {
-  const data=await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
+async function setup(t, {codex=true,claude=true,sharedData}={}) {
+  const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:''};
@@ -80,4 +80,32 @@ test('worker failure is reported and permits a later task',async t=>{
   assert.match(failed.error,/mock provider failed/);
   const retry=data(await call('submit_codex_task',{task:'retry'}));
   assert.equal((await completed(call,'codex',retry.task_id)).status,'completed');
+});
+
+
+test('stale or malformed lock fails closed until manually removed',async t=>{
+  const {call,data:dir}=await setup(t);
+  for(const contents of ['{bad json',JSON.stringify({pid:2147483647})]) {
+    await writeFile(join(dir,'submit.lock'),contents);
+    const blocked=await call('submit_codex_task',{task:'test'});
+    assert.equal(blocked.result.isError,true);
+    assert.match(blocked.result.content[0].text,/stale submission lock/);
+    assert.equal(await readFile(join(dir,'submit.lock'),'utf8'),contents);
+    await rm(join(dir,'submit.lock'));
+  }
+  const accepted=data(await call('submit_codex_task',{task:'retry after recovery'}));
+  assert.equal((await completed(call,'codex',accepted.task_id)).status,'completed');
+});
+
+test('two bridge processes sharing a data directory admit only one task',async t=>{
+  const a=await setup(t);
+  const b=await setup(t,{sharedData:a.data});
+  const replies=await Promise.all([a.call('submit_codex_task',{task:'first'}),b.call('submit_codex_task',{task:'second'})]);
+  const accepted=replies.filter(x=>!x.result.isError);
+  const rejected=replies.filter(x=>x.result.isError);
+  assert.equal(accepted.length,1);
+  assert.equal(rejected.length,1);
+  assert.match(rejected[0].result.content[0].text,/submission lock|already active/);
+  const id=data(accepted[0]).task_id;
+  assert.equal((await completed(a.call,'codex',id)).status,'completed');
 });

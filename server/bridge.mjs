@@ -162,12 +162,14 @@ function list() {
 let submitting=false;
 function submissionLock() {
   const path=join(root,'submit.lock');
-  if(existsSync(path)){
-    let owner;try{owner=JSON.parse(readFileSync(path,'utf8'));}catch{}
-    let alive=false;try{if(owner?.pid){process.kill(owner.pid,0);alive=true;}}catch{}
-    if(owner&&!alive)try{unlinkSync(path);}catch{}
+  // A stale-lock check followed by unlink is racy: another process may have
+  // replaced the file. Fail closed until the owner explicitly recovers it.
+  let fd;
+  try { fd=openSync(path,'wx',0o600); }
+  catch(e) {
+    if(e.code==='EEXIST') throw new Error('Another bridge process is submitting a task, or a stale submission lock remains. See README lock recovery.');
+    throw new Error('Unable to create the submission lock: '+e.message);
   }
-  let fd;try{fd=openSync(path,'wx',0o600);writeFileSync(fd,JSON.stringify({pid:process.pid}));}catch(e){if(fd!==undefined)closeSync(fd);throw new Error('Another bridge process is submitting a task. Try again after it finishes.');}
   return ()=>{closeSync(fd);try{unlinkSync(path);}catch{}};
 }
 async function submit(task, provider='codex',allowWeb=false) {

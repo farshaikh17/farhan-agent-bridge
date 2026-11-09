@@ -12,7 +12,7 @@ This is an independent community project, not an official provider integration.
 ## What it does
 
 - Checks installed CLI compatibility and subscription authentication.
-- Runs one local background task at a time across bridge processes.
+- Attempts to limit local background work to one task across bridge processes.
 - Provides separate submit/result tools for Codex and Claude.
 - Saves prompts, results and reported usage in a local runtime directory.
 - Allows optional **public** Claude web search/fetch with `allow_web: true`.
@@ -85,6 +85,18 @@ Codex discovery looks for its npm entrypoint in the usual Windows npm directory
 and PATH-related npm locations. This is Windows-oriented discovery, not a general
 cross-platform installer.
 
+## Recovering a stuck submission lock
+
+Use a local disk for `FARHAN_BRIDGE_DATA`; network filesystems may not enforce
+exclusive creation reliably. If submissions still report a submission lock after
+an interruption, close **all** bridge clients and stop all bridge processes first,
+then delete only `submit.lock` in the runtime directory and restart the client.
+Never delete it while any bridge process may be submitting: doing so can allow
+overlapping tasks. Queued or running workers and job recovery are separate from
+this lock; check a task's status before retrying. Do not delete authentication
+folders. If lock creation reports another filesystem error, correct the directory
+permissions or storage issue instead of removing files blindly.
+
 ## Tools
 
 | Tool | Purpose |
@@ -139,7 +151,7 @@ and selected task lifecycle cases using simulated CLIs and temporary data.
 They make no provider inference calls.
 
 These checks passed for this repository preparation. Live inference, authentication,
-provider billing behavior, cross-process concurrency and full worker lifecycle are **not covered**
+provider billing behavior, all cross-process failure cases and full worker lifecycle are **not covered**
 by the included tests. Earlier local setup claims are not presented as a portable
 release test suite.
 
