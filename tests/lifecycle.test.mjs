@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdtemp, rm, writeFile, readFile, access} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -38,7 +38,7 @@ async function setup(t, {codex=true,claude=true}={}) {
   lines.on('line',line=>{const m=JSON.parse(line);const p=pending.get(m.id);if(p){pending.delete(m.id);clearTimeout(p.timer);p.resolve(m);}});
   function call(name,args={}) {const id=++sequence;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(`Timeout ${name}: ${stderr}`)),10000);pending.set(id,{resolve,timer});child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})+'\n');});}
   t.after(async()=>{lines.close();const closed=once(child,'close');child.stdin.end();child.kill();await closed;await rm(data,{recursive:true,force:true});});
-  return {call};
+  return {call,data};
 }
 function data(result){assert.notEqual(result.result?.isError,true,result.result?.content?.[0]?.text);return JSON.parse(result.result.content[0].text);}
 async function completed(call,provider,id){for(let i=0;i<100;i++){const j=data(await call(`get_${provider}_task`,{task_id:id}));if(['completed','failed'].includes(j.status))return j;await delay(50);}throw new Error('Worker did not finish');}
@@ -53,7 +53,7 @@ test('status reports Claude even if Codex is absent',async t=>{
 });
 
 test('mock providers complete tasks and prevent overlapping work',async t=>{
-  const {call}=await setup(t);
+  const {call,data:dir}=await setup(t);
   const s=data(await call('bridge_status'));
   assert.equal(s.chatgpt_sign_in,true); assert.equal(s.claude.subscription_sign_in,true);
   for(const provider of ['codex','claude']){
@@ -65,14 +65,18 @@ test('mock providers complete tasks and prevent overlapping work',async t=>{
     assert.equal(j.status,'completed',j.error);
     assert.equal(j.answer,`mock ${provider} answer`);
     assert.equal(j.task,undefined);
+    const stored=JSON.parse(await readFile(join(dir,'jobs',submitted.task_id+'.json'),'utf8'));
+    assert.equal(stored.task,undefined);
+    if(provider==='codex') await assert.rejects(access(join(dir,'jobs',submitted.task_id+'.answer.txt')), {code:'ENOENT'});
   }
 });
 
 test('worker failure is reported and permits a later task',async t=>{
-  const {call}=await setup(t);
+  const {call,data:dir}=await setup(t);
   const submitted=data(await call('submit_codex_task',{task:'trigger mock failure'}));
   const failed=await completed(call,'codex',submitted.task_id);
   assert.equal(failed.status,'failed');
+  assert.equal(JSON.parse(await readFile(join(dir,'jobs',submitted.task_id+'.json'),'utf8')).task,undefined);
   assert.match(failed.error,/mock provider failed/);
   const retry=data(await call('submit_codex_task',{task:'retry'}));
   assert.equal((await completed(call,'codex',retry.task_id)).status,'completed');

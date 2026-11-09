@@ -128,7 +128,7 @@ async function claudeWorker(job) {
 async function worker(id) {
   let job=load(id); job.status='running';job.started_at=new Date().toISOString();job.worker_pid=process.pid;save(job);
   try {
-    if(job.provider==='claude'){await claudeWorker(job);job.finished_at=new Date().toISOString();save(job);return;}
+    if(job.provider==='claude'){await claudeWorker(job);return;}
     const auth=await execute(['login','status']);
     if(auth.code!==0 || !/logged in using chatgpt/i.test(auth.out+' '+auth.err)) throw new Error('ChatGPT subscription sign-in required. API-key mode is not accepted.');
     const answerFile=join(jobs,id+'.answer.txt');
@@ -145,7 +145,14 @@ async function worker(id) {
     if(result.code!==0 || !job.answer.trim()) throw new Error(result.err || 'Codex returned no final answer.');
     job.status='completed';
   } catch(e) {job.status='failed';job.error=redact(e.message);}
-  job.finished_at=new Date().toISOString();save(job);
+  finally {
+    delete job.task;
+    if(job.provider==='codex') {
+      try { unlinkSync(join(jobs,id+'.answer.txt')); }
+      catch(e) { if(e.code!=='ENOENT') job.cleanup_warning='Could not remove the temporary answer file; delete it manually from the jobs folder.'; }
+    }
+    job.finished_at=new Date().toISOString();save(job);
+  }
 }
 function list() {
   return readdirSync(jobs).filter(n=>/^[0-9a-f-]+\.json$/.test(n)).map(n=>{
@@ -173,7 +180,7 @@ async function submit(task, provider='codex',allowWeb=false) {
   for(const j of list().filter(j=>['queued','running'].includes(j.status))) {
     const full=load(j.id);
     let alive=false; try {if(full.worker_pid){process.kill(full.worker_pid,0);alive=true;}}catch{}
-    if(!alive && Date.now()-Date.parse(full.created_at)>30000){full.status='failed';full.error='Worker stopped; task did not finish.';save(full);}
+    if(!alive && Date.now()-Date.parse(full.created_at)>30000){full.status='failed';full.error='Worker stopped; task did not finish.';delete full.task;save(full);}
   }
   if(list().some(j=>['queued','running'].includes(j.status))) throw new Error('One task is already active. Retrieve its result before submitting another.');
   const s=provider==='claude'?await claudeStatus():await status();
