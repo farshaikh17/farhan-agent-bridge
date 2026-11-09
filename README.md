@@ -125,12 +125,13 @@ npm run check
 npm test
 ```
 
-The included tests check manifest version consistency, stdio initialization,
-tool discovery, ping, invalid task IDs, empty/oversized prompts and unsupported
-methods, using a temporary data directory. They make no provider inference calls.
+The included tests check manifest consistency, stdio initialization, tool discovery,
+input validation, provider-specific result retrieval, independent status reporting,
+and selected task lifecycle cases using simulated CLIs and temporary data.
+They make no provider inference calls.
 
 These checks passed for this repository preparation. Live inference, authentication,
-provider billing behavior, concurrency and full worker lifecycle are **not covered**
+provider billing behavior, cross-process concurrency and full worker lifecycle are **not covered**
 by the included tests. Earlier local setup claims are not presented as a portable
 release test suite.
 
