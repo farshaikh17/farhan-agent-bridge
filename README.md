@@ -33,6 +33,14 @@ usage. CLI cost estimates are not evidence of an additional subscription charge.
 This project does not bundle provider CLIs, credentials or dependencies.
 Provider account terms and usage limits still apply.
 
+**Commercial distribution:** Anthropic's developer guidance says products built
+for others should use API-key authentication through Claude Console or a supported
+cloud provider. This bridge currently accepts only Claude subscription login and
+does not support API authentication. Do not market this Claude integration as a
+compliant commercial offering without clarifying the exact configuration with
+Anthropic. API usage may incur charges and is not enabled by this bridge. See
+[Anthropic's authentication guidance](https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account).
+
 ## Installation
 
 Clone/download the repository. Point a local stdio MCP client at:
