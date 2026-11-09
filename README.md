@@ -99,6 +99,11 @@ permissions or storage issue instead of removing files blindly.
 
 ## Job recovery after an interruption
 
+If worker startup fails before a process starts, the bridge records a failed job
+and returns its task ID. If it also cannot update the job record, it returns the
+ID and requires the offline recovery procedure below. A worker that starts and
+then exits is a different case and may still require investigation.
+
 Queued or running records block new submissions even if they are old. First poll
 the task ID. If it remains stuck, **close all bridge clients and confirm that the
 bridge worker and its provider processes have stopped** before taking any action.

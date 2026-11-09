@@ -1,3 +1,4 @@
+import {launchWorker} from './launch.mjs';
 import {finalizeJob} from './finalize.mjs';
 import {spawn} from 'node:child_process';
 import {existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, openSync,closeSync,unlinkSync} from 'node:fs';
@@ -186,11 +187,10 @@ async function submit(task, provider='codex',allowWeb=false) {
   if(provider==='claude'){if(!s.subscription_sign_in||!s.compatible_cli)throw new Error(s.next_step||s.error);}
   else if(!s.chatgpt_sign_in || !s.compatible_cli)throw new Error(s.next_step);
   const id=randomUUID();
-  save({id,status:'queued',provider,allow_web:provider==='claude'&&allowWeb===true,task,created_at:new Date().toISOString()});
+  const job={id,status:'queued',provider,allow_web:provider==='claude'&&allowWeb===true,task,created_at:new Date().toISOString()};
+  save(job);
   const args=[self,'--worker',id];if(process.argv.includes('--test-mode'))args.push('--test-mode');
-  const child=spawn(process.execPath,args,{env:cleanEnv(),detached:true,stdio:'ignore',windowsHide:true,shell:false});
-  await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});
-  child.unref();
+  await launchWorker(job,{save,start:()=>spawn(process.execPath,args,{env:cleanEnv(),detached:true,stdio:'ignore',windowsHide:true,shell:false})});
   return {task_id:id,status:'queued',provider,next_step:`Use get_${provider}_task with this ID to check progress. The computer must stay awake. This is local delegation, not an always-on cloud service.`};
   }finally{unlock?.();submitting=false;}
 }
