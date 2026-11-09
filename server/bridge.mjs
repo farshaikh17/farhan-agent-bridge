@@ -207,6 +207,9 @@ async function main() {
   lines.on('line',async line=>{
     let msg;
     try {msg=JSON.parse(line);} catch {process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error'}})+'\n');return;}
+    if(msg===null || typeof msg!=='object' || Array.isArray(msg)) {
+      process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:null,error:{code:-32600,message:'Invalid Request'}})+'\n');return;
+    }
     if(msg.id===undefined)return;
     function reply(result,error){process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:msg.id,...(error?{error}:{result})})+'\n');}
     try {

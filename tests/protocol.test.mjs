@@ -65,3 +65,25 @@ test('stdio protocol and invalid inputs work without provider calls', async t =>
   }
   assert.equal((await request('unsupported')).error.code,-32601);
 });
+
+
+test('non-object JSON receives an error and the server stays available', async t => {
+  const data=await mkdtemp(join(tmpdir(),'bridge-invalid-'));
+  const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
+  const child=spawn(process.execPath,[server],{env:{...process.env,FARHAN_BRIDGE_DATA:data},stdio:['pipe','pipe','pipe'],windowsHide:true});
+  const lines=createInterface({input:child.stdout});
+  t.after(async()=>{lines.close();const closed=once(child,'close');child.stdin.end();child.kill();await closed;await rm(data,{recursive:true,force:true});});
+  async function exchange(input) {
+    const result=Promise.race([once(lines,'line').then(([line])=>JSON.parse(line)),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(new Error('response timeout')),3000);timer.unref();})]);
+    child.stdin.write(input+'\n');
+    return result;
+  }
+  for(const input of ['null','1','"text"','true','[]']) {
+    const response=await exchange(input);
+    assert.equal(response.id,null);
+    assert.equal(response.error.code,-32600);
+  }
+  const pong=await exchange(JSON.stringify({jsonrpc:'2.0',id:42,method:'ping'}));
+  assert.equal(pong.id,42);
+  assert.deepEqual(pong.result,{});
+});
