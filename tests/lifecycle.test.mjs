@@ -109,3 +109,35 @@ test('two bridge processes sharing a data directory admit only one task',async t
   const id=data(accepted[0]).task_id;
   assert.equal((await completed(a.call,'codex',id)).status,'completed');
 });
+
+
+test('old queued and running records block new work without being rewritten',async t=>{
+  const {call,data:dir}=await setup(t);
+  await call('bridge_status');
+  for (const status of ['queued','running']) {
+    const id='00000000-0000-4000-8000-000000000003';
+    const file=join(dir,'jobs',id+'.json');
+    const content=JSON.stringify({id,status,provider:'codex',worker_pid:2147483647,created_at:'2000-01-01T00:00:00.000Z',task:'private'});
+    await writeFile(file,content);
+    const blocked=await call('submit_codex_task',{task:'test'});
+    assert.equal(blocked.result.isError,true);
+    assert.match(blocked.result.content[0].text,/already active/);
+    assert.equal(await readFile(file,'utf8'),content);
+    await rm(file);
+  }
+  const accepted=data(await call('submit_codex_task',{task:'after recovery'}));
+  assert.equal((await completed(call,'codex',accepted.task_id)).status,'completed');
+});
+
+test('unreadable job records block submissions without exposing their contents',async t=>{
+  const {call,data:dir}=await setup(t);
+  await call('bridge_status');
+  const file=join(dir,'jobs','00000000-0000-4000-8000-000000000004.json');
+  await writeFile(file,'invalid private material');
+  const blocked=await call('submit_codex_task',{task:'test'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/job record is unreadable or invalid/);
+  assert.match(blocked.result.content[0].text,/00000000-0000-4000-8000-000000000004\.json/);
+  assert.doesNotMatch(blocked.result.content[0].text,/private material/);
+  assert.equal(await readFile(file,'utf8'),'invalid private material');
+});

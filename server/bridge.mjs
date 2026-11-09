@@ -156,8 +156,12 @@ async function worker(id) {
 }
 function list() {
   return readdirSync(jobs).filter(n=>/^[0-9a-f-]+\.json$/.test(n)).map(n=>{
-    try {const j=JSON.parse(readFileSync(join(jobs,n),'utf8'));return {id:j.id,status:j.status,created_at:j.created_at};}catch{return null;}
-  }).filter(Boolean).sort((a,b)=>b.created_at.localeCompare(a.created_at));
+    try {
+      const j=JSON.parse(readFileSync(join(jobs,n),'utf8'));
+      if(typeof j.id!=='string'||n!==j.id+'.json'||!['queued','running','completed','failed'].includes(j.status)||typeof j.created_at!=='string') throw new Error('Invalid record');
+      return {id:j.id,status:j.status,created_at:j.created_at};
+    } catch { throw new Error('A job record is unreadable or invalid ('+n+'); submissions are paused. See README job recovery.'); }
+  }).sort((a,b)=>b.created_at.localeCompare(a.created_at));
 }
 let submitting=false;
 function submissionLock() {
@@ -179,12 +183,9 @@ async function submit(task, provider='codex',allowWeb=false) {
   try {
   unlock=submissionLock();
   if(typeof task!=='string'||!task.trim()||task.length>50000) throw new Error('Provide task text between 1 and 50,000 characters.');
-  for(const j of list().filter(j=>['queued','running'].includes(j.status))) {
-    const full=load(j.id);
-    let alive=false; try {if(full.worker_pid){process.kill(full.worker_pid,0);alive=true;}}catch{}
-    if(!alive && Date.now()-Date.parse(full.created_at)>30000){full.status='failed';full.error='Worker stopped; task did not finish.';delete full.task;save(full);}
-  }
-  if(list().some(j=>['queued','running'].includes(j.status))) throw new Error('One task is already active. Retrieve its result before submitting another.');
+  // A PID or elapsed time cannot prove that a worker and its descendants stopped.
+  // Preserve ambiguous records and fail closed until explicit offline recovery.
+  if(list().some(j=>['queued','running'].includes(j.status))) throw new Error('One task is already active. Retrieve its result before submitting another; if stuck, see README job recovery.');
   const s=provider==='claude'?await claudeStatus():await status();
   if(provider==='claude'){if(!s.subscription_sign_in||!s.compatible_cli)throw new Error(s.next_step||s.error);}
   else if(!s.chatgpt_sign_in || !s.compatible_cli)throw new Error(s.next_step);

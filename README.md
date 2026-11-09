@@ -97,6 +97,24 @@ this lock; check a task's status before retrying. Do not delete authentication
 folders. If lock creation reports another filesystem error, correct the directory
 permissions or storage issue instead of removing files blindly.
 
+## Job recovery after an interruption
+
+Queued or running records block new submissions even if they are old. First poll
+the task ID. If it remains stuck, **close all bridge clients and confirm that the
+bridge worker and its provider processes have stopped** before taking any action.
+A PID alone is not proof: process IDs can be reused, and a worker may have spawned
+other processes. If you cannot confirm this, do not retry the task.
+
+Once all workers have stopped, locate the specific stuck `<task-id>.json` in the
+runtime directory's `jobs` folder. Move that file outside the `jobs` folder to a
+private location for investigation, then restart the client. The moved record is
+no longer retrievable through the bridge and may contain a plaintext prompt. Do
+not move completed or unrelated jobs, authentication folders, or share the file.
+If an unreadable or invalid job record blocks submissions, use the same offline
+procedure for that specific record; make a private backup before moving it. An
+interrupted task may already have consumed provider allowance or produced a partial
+result; inspect available results and provider usage before deciding to resubmit.
+
 ## Tools
 
 | Tool | Purpose |
