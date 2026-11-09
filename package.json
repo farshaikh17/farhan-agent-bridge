@@ -9,6 +9,6 @@
   "scripts": {
     "start": "node server/bridge.mjs",
     "check": "node --check server/bridge.mjs",
-    "test": "node --test tests/protocol.test.mjs"
+    "test": "node --test"
   }
 }
