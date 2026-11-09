@@ -104,6 +104,9 @@ the task ID. If it remains stuck, **close all bridge clients and confirm that th
 bridge worker and its provider processes have stopped** before taking any action.
 A PID alone is not proof: process IDs can be reused, and a worker may have spawned
 other processes. If you cannot confirm this, do not retry the task.
+A running record can contain a checkpointed answer if finalization was interrupted;
+that is not confirmation of success. Preserve the record and any matching
+`<task-id>.answer.txt` file during recovery. Either can contain sensitive data.
 
 Once all workers have stopped, locate the specific stuck `<task-id>.json` in the
 runtime directory's `jobs` folder. Move that file outside the `jobs` folder to a

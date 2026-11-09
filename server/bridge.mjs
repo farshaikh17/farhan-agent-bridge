@@ -1,3 +1,4 @@
+import {finalizeJob} from './finalize.mjs';
 import {spawn} from 'node:child_process';
 import {existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, openSync,closeSync,unlinkSync} from 'node:fs';
 import {homedir} from 'node:os';
@@ -146,12 +147,7 @@ async function worker(id) {
     job.status='completed';
   } catch(e) {job.status='failed';job.error=redact(e.message);}
   finally {
-    delete job.task;
-    if(job.provider==='codex') {
-      try { unlinkSync(join(jobs,id+'.answer.txt')); }
-      catch(e) { if(e.code!=='ENOENT') job.cleanup_warning='Could not remove the temporary answer file; delete it manually from the jobs folder.'; }
-    }
-    job.finished_at=new Date().toISOString();save(job);
+    finalizeJob(job,{save,removeAnswer:()=>unlinkSync(join(jobs,id+'.answer.txt'))});
   }
 }
 function list() {

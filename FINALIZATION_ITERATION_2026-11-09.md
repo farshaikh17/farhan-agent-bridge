@@ -1,0 +1,9 @@
+# Result finalization iteration — 2026-11-09
+
+Base PR #1 head 6bc2589; Actions run 42601996951 passed on Ubuntu and Windows, Node 20 and 24. Reviewed the PR, latest source, tests, prior recovery/privacy notes and checks. Selected the documented Codex result-loss window: the temporary answer was unlinked before the final job save, so save failure could destroy the only result copy.
+
+The worker now saves a nonterminal running checkpoint containing the answer before attempting cleanup, then saves the terminal status. If the checkpoint fails, the answer file is untouched. If the final save fails after unlink, the checkpoint retains the answer and the record remains running. Unlink errors other than missing file become a cleanup warning. The result may be visible while running; it is not proof of successful completion. Claude finalization stays a single save. User recovery guidance now tells users to preserve checkpoint and temporary answer files.
+
+Validation: `npm run check` and `npm test` passed on Linux Node 24.22.1 (13 tests), using mock providers. Added injected checkpoint-failure, final-save-failure, cleanup-error and operation-order tests; existing lifecycle tests exercise actual file handling. Windows CI on this new head remains to be checked. No credentials, live providers, billing or paid APIs were accessed.
+
+Limitations: this changes write ordering, not guaranteed power-loss durability: the job save does not fsync file or directory, and platform/filesystem behavior still matters. Node documents fsync and flush options at https://nodejs.org/api/fs.html#fswritefilesyncfile-data-options; don't assume crash-safe persistence from synchronous calls alone. Interrupted workers and failed final saves require offline manual recovery, and an answer or error can contain sensitive data. Existing stale files, Windows ACLs, detached process handling and provider/marketplace commercial terms remain open. No provider approval claimed.
