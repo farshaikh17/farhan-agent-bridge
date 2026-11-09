@@ -201,6 +201,17 @@ const tools=[
   {name:'submit_claude_task',description:'Delegate a user-authorized text-analysis task through official Claude Code subscription login. Optional public web research with allow_web=true. No shell, local-file, MCP, messaging or publishing tools. Uses Sonnet and checks subscription auth before each task. One shared active task, 20-minute timeout, polling required. First test: Reply exactly CLAUDE_BRIDGE_TEST_OK. Never infer allowance from token counts; no API fallback is configured.',inputSchema:{type:'object',properties:{task:{type:'string',minLength:1,maxLength:50000},allow_web:{type:'boolean',default:false}},required:['task'],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false}},
   {name:'get_claude_task',description:'Retrieve a Claude task status, final answer and usage. Cached input, cache creation and ordinary input are separate provider fields. A list-price estimate is not an actual subscription charge. Queued/running is not completion.',inputSchema:{type:'object',properties:{task_id:{type:'string'}},required:['task_id'],additionalProperties:false},annotations:{readOnlyHint:true}}
 ];
+function validateToolArguments(name, args) {
+  const tool=tools.find(t=>t.name===name);
+  if(!tool) throw new Error('Unknown tool.');
+  if(args===null || typeof args!=='object' || Array.isArray(args)) throw new Error('Tool arguments must be an object.');
+  const schema=tool.inputSchema;
+  for(const key of Object.keys(args)) {
+    if(!Object.hasOwn(schema.properties,key)) throw new Error('Unexpected tool argument: '+key);
+    if(typeof args[key]!==schema.properties[key].type) throw new Error('Invalid type for tool argument: '+key);
+  }
+  for(const key of schema.required||[]) if(!Object.hasOwn(args,key)) throw new Error('Missing required tool argument: '+key);
+}
 async function main() {
   if(process.argv.includes('--worker')) {await worker(process.argv[process.argv.indexOf('--worker')+1]);return;}
   const lines=createInterface({input:process.stdin,crlfDelay:Infinity});
@@ -220,8 +231,9 @@ async function main() {
       if(msg.method==='ping')return reply({});
       if(msg.method==='tools/list')return reply({tools});
       if(msg.method==='tools/call') {
-        const a=msg.params?.arguments||{};let value;
+        const a=msg.params?.arguments===undefined?{}:msg.params.arguments;let value;
         try {
+          validateToolArguments(msg.params?.name,a);
           if(msg.params.name==='bridge_status')value=await status();
           else if(msg.params.name==='submit_codex_task')value=await submit(a.task);
           else if(msg.params.name==='submit_claude_task')value=await submit(a.task,'claude',a.allow_web);

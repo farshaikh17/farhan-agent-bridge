@@ -58,6 +58,19 @@ test('stdio protocol and invalid inputs work without provider calls', async t =>
     assert.equal(bad.result.isError,true);
     assert.match(bad.result.content[0].text,/not a (Claude|Codex) task/);
   }
+  for(const [name,args] of [
+    ['bridge_status',{unexpected:true}],
+    ['submit_claude_task',{task:'hello',allow_web:'true'}],
+    ['submit_codex_task',{task:'hello',allow_web:true}],
+    ['submit_codex_task',{}],
+    ['get_codex_task',{task_id:1}],
+    ['bridge_status',[]],
+    ['bridge_status',null]
+  ]) {
+    const result=await request('tools/call',{name,arguments:args});
+    assert.equal(result.result.isError,true);
+    assert.match(result.result.content[0].text,/argument/);
+  }
   for(const task of ['', 'x'.repeat(50001)]){
     const bad=await request('tools/call',{name:'submit_claude_task',arguments:{task}});
     assert.equal(bad.result.isError,true);
