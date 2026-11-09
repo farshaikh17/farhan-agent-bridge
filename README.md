@@ -149,7 +149,9 @@ Codex runs in a read-only shell sandbox with ordinary user configuration ignored
 supplied text, no shell/local-file/MCP tools, and optional public WebSearch/WebFetch.
 Neither worker inherits an authenticated browser through this bridge.
 
-Several API-key and provider-override environment variables are removed. There is
+The bridge removes NODE_OPTIONS, NODE_PATH and several API-key and provider-override
+environment variables from child processes. Other environment variables remain
+visible to those processes and may contain secrets; use a clean environment. There is
 no configured paid API fallback, provider fallback or purchase flow. This is not
 a comprehensive security audit or a guarantee about future CLI behavior. Keep
 paid extra usage disabled in the official account and inspect usage settings.

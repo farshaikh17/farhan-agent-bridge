@@ -14,7 +14,7 @@ import {writeFileSync,readFileSync} from 'node:fs';
 const args=process.argv.slice(2);
 if(args[0]==='login') console.log('Logged in using ChatGPT');
 else if(args[0]==='auth') console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',apiProvider:'firstParty',subscriptionType:'pro'}));
-else if(args[0]==='--version') console.log('mock 1.0');
+else if(args[0]==='--version') console.log(process.env.NODE_OPTIONS || process.env.NODE_PATH || process.env.OPENAI_API_KEY ? 'unexpected inherited option' : 'mock 1.0');
 else if(args.includes('--help')) console.log('--ignore-user-config --safe-mode --strict-mcp-config --tools --setting-sources');
 else {
   const input=readFileSync(0,'utf8');
@@ -28,7 +28,7 @@ async function setup(t, {codex=true,claude=true,sharedData}={}) {
   const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
-  const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:''};
+  const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value'};
   if(codex) env.FARHAN_BRIDGE_TEST_RUNNER=runner;
   if(claude) env.FARHAN_BRIDGE_TEST_CLAUDE_RUNNER=runner;
   const child=spawn(process.execPath,[server,'--test-mode'],{env,stdio:['pipe','pipe','pipe']});
@@ -56,6 +56,7 @@ test('mock providers complete tasks and prevent overlapping work',async t=>{
   const {call,data:dir}=await setup(t);
   const s=data(await call('bridge_status'));
   assert.equal(s.chatgpt_sign_in,true); assert.equal(s.claude.subscription_sign_in,true);
+  assert.equal(s.version,'mock 1.0'); assert.equal(s.claude.version,'mock 1.0');
   for(const provider of ['codex','claude']){
     const submitted=data(await call(`submit_${provider}_task`,{task:'test task'}));
     const blocked=await call(`submit_${provider}_task`,{task:'second task'});
