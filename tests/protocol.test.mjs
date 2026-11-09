@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp, rm, readFile} from 'node:fs/promises';
+import {mkdtemp, rm, readFile, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -43,6 +43,20 @@ test('stdio protocol and invalid inputs work without provider calls', async t =>
     const bad=await request('tools/call',{name,arguments:{task_id:'../../auth'}});
     assert.equal(bad.result.isError,true);
     assert.match(bad.result.content[0].text,/Invalid task ID/);
+  }
+  const fixtures=[['codex','00000000-0000-4000-8000-000000000001'],['claude','00000000-0000-4000-8000-000000000002']];
+  for(const [provider,id] of fixtures){
+    await writeFile(join(data,'jobs',id+'.json'),JSON.stringify({id,provider,status:'completed',task:'private prompt',answer:'done',worker_pid:123}));
+    const good=await request('tools/call',{name:`get_${provider}_task`,arguments:{task_id:id}});
+    assert.equal(good.result.isError,undefined);
+    const body=JSON.parse(good.result.content[0].text);
+    assert.equal(body.answer,'done');
+    assert.equal(body.task,undefined);
+    assert.equal(body.worker_pid,undefined);
+    const other=provider==='claude'?'codex':'claude';
+    const bad=await request('tools/call',{name:`get_${other}_task`,arguments:{task_id:id}});
+    assert.equal(bad.result.isError,true);
+    assert.match(bad.result.content[0].text,/not a (Claude|Codex) task/);
   }
   for(const task of ['', 'x'.repeat(50001)]){
     const bad=await request('tools/call',{name:'submit_claude_task',arguments:{task}});
