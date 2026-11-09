@@ -67,7 +67,7 @@ test('stdio protocol and invalid inputs work without provider calls', async t =>
 });
 
 
-test('non-object JSON receives an error and the server stays available', async t => {
+test('malformed requests receive errors and the server stays available', async t => {
   const data=await mkdtemp(join(tmpdir(),'bridge-invalid-'));
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const child=spawn(process.execPath,[server],{env:{...process.env,FARHAN_BRIDGE_DATA:data},stdio:['pipe','pipe','pipe'],windowsHide:true});
@@ -80,6 +80,17 @@ test('non-object JSON receives an error and the server stays available', async t
   }
   for(const input of ['null','1','"text"','true','[]']) {
     const response=await exchange(input);
+    assert.equal(response.id,null);
+    assert.equal(response.error.code,-32600);
+  }
+  for(const invalid of [
+    {id:1,method:'ping'},
+    {jsonrpc:'1.0',id:1,method:'ping'},
+    {jsonrpc:'2.0',id:1,method:4},
+    {jsonrpc:'2.0',id:{},method:'ping'},
+    {jsonrpc:'2.0',id:1,method:'tools/call',params:'bad'}
+  ]) {
+    const response=await exchange(JSON.stringify(invalid));
     assert.equal(response.id,null);
     assert.equal(response.error.code,-32600);
   }
