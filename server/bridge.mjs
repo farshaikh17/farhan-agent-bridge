@@ -74,17 +74,20 @@ function save(job) {
 }
 function load(id) {return JSON.parse(readFileSync(pathFor(id),'utf8'));}
 async function status() {
-  const auth=await execute(['login','status']);
-  const ver=await execute(['--version']);
-  const help=await execute(['exec','--help']);
-  const compatible=help.code===0 && help.out.includes('--ignore-user-config');
-  const authText=auth.out+' '+auth.err;
-  const signedIn=auth.code===0 && /logged in using chatgpt/i.test(authText);
+  let version='', compatible=false, signedIn=false, codexError;
+  try {
+    const auth=await execute(['login','status']);
+    const ver=await execute(['--version']);
+    const help=await execute(['exec','--help']);
+    compatible=help.code===0 && help.out.includes('--ignore-user-config');
+    signedIn=auth.code===0 && /logged in using chatgpt/i.test(auth.out+' '+auth.err);
+    version=ver.out.trim();
+  } catch(e) { codexError=redact(e.message); }
   const claude=await claudeStatus();
-  return {bridge_version:'0.2.0',version:ver.out.trim(), chatgpt_sign_in:signedIn,compatible_cli:compatible,claude,
+  return {bridge_version:'0.2.0',version, chatgpt_sign_in:signedIn,compatible_cli:compatible,...(codexError?{codex_error:codexError}:{}),claude,
     billing_verification:'CLI sign-in mode only. Check the subscribed account usage dashboard after a test to confirm allowance consumption.',
     mode:'read-only; separate tasks; inherited user config disabled',workspace,codex_home:codexHome,
-    next_step:!compatible?'Update Codex; this bridge requires exec --ignore-user-config.':signedIn?'Ready for a small task.':'In PowerShell set $env:CODEX_HOME to the codex_home shown here, run codex.cmd login, and choose the account whose allowance you intend to use. Close that PowerShell afterward; the desktop account login stays separate.'};
+    next_step:codexError||(!compatible?'Update Codex; this bridge requires exec --ignore-user-config.':signedIn?'Ready for a small task.':'In PowerShell set $env:CODEX_HOME to the codex_home shown here, run codex.cmd login, and choose the account whose allowance you intend to use. Close that PowerShell afterward; the desktop account login stays separate.')};
 }
 async function claudeStatus() {
   try {
