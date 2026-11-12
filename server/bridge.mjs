@@ -46,10 +46,12 @@ function redact(s) {
   return String(s).replace(/(?:sk-|tvly-|fco_|Bearer\s+)[A-Za-z0-9_.\-]{8,}/gi, '[REDACTED]').slice(-6000);
 }
 function execute(args, input='', timeout=20000, onLine, provider='codex') {
-  if (onLine && process.argv.includes('--test-mode') && process.env.FARHAN_BRIDGE_TEST_TIMEOUT === '1') timeout=1000;
+  if (process.argv.includes('--test-mode') && ((onLine && process.env.FARHAN_BRIDGE_TEST_TIMEOUT === '1') || (args[0]==='auth' && process.argv.includes('--worker') && process.env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT === '1'))) timeout=1000;
   return new Promise((resolve,reject) => {
     const [cmd, prefix] = provider==='claude'?claudeRunner():runner();
-    const child = spawn(cmd, [...prefix, ...args], {env:cleanEnv(provider),cwd:workspace,windowsHide:true,shell:false});
+    const env=cleanEnv(provider);
+    if(process.argv.includes('--test-mode') && process.argv.includes('--worker') && process.env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT==='1') env.FARHAN_BRIDGE_TEST_HANG_AUTH='1';
+    const child = spawn(cmd, [...prefix, ...args], {env,cwd:workspace,windowsHide:true,shell:false});
     let out='', err='', settled=false;
     const timer=setTimeout(() => {
       try {
@@ -107,7 +109,7 @@ async function claudeStatus() {
     const compatible=help.code===0&&['--safe-mode','--strict-mcp-config','--tools','--setting-sources'].every(x=>help.out.includes(x));
     const subscription=auth.code===0&&a.loggedIn===true&&a.authMethod==='claude.ai'&&a.apiProvider==='firstParty'&&['max','pro','team','enterprise'].includes(a.subscriptionType);
     return {installed:true,version:ver.out.trim(),subscription_sign_in:subscription,compatible_cli:compatible,email:a.email||null,subscription_type:a.subscriptionType||null,auth_method:a.authMethod||null,claude_home:claudeHome,remaining_allowance:'Not returned by auth status; check the official Usage page.',mode:'text analysis; optional public WebSearch/WebFetch only; no shell, local-file, MCP or publishing tools',next_step:subscription&&compatible?'Ready for a small Claude task.':'Use official Claude subscription login with CLAUDE_CONFIG_DIR set to claude_home; API/Console authentication is not accepted.'};
-  } catch(e){return {installed:false,subscription_sign_in:false,error:redact(e.message)};}
+  } catch(e){if(e.code==='BRIDGE_TIMEOUT') throw e; return {installed:false,subscription_sign_in:false,error:redact(e.message)};}
 }
 async function claudeWorker(job) {
   const s=await claudeStatus();
