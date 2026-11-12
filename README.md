@@ -97,6 +97,17 @@ this lock; check a task's status before retrying. Do not delete authentication
 folders. If lock creation reports another filesystem error, correct the directory
 permissions or storage issue instead of removing files blindly.
 
+## Provider lock recovery
+
+`provider.lock` blocks provider commands while another command is running. A timeout,
+process error, or bridge interruption can leave it behind, including during status
+checks before a task exists. Close every bridge client and confirm the bridge workers,
+provider processes and their descendants have stopped. If you cannot confirm this,
+do not remove the lock or retry. Once confirmed, remove only `provider.lock` from
+the runtime directory and restart the client. Also follow job recovery below for
+any queued or running task. The lock does not prove that provider descendants have
+stopped after a normally completed command.
+
 ## Job recovery after an interruption
 
 If worker startup fails before a process starts, the bridge records a failed job

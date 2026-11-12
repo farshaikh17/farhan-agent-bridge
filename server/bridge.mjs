@@ -46,9 +46,15 @@ function redact(s) {
   return String(s).replace(/(?:sk-|tvly-|fco_|Bearer\s+)[A-Za-z0-9_.\-]{8,}/gi, '[REDACTED]').slice(-6000);
 }
 function execute(args, input='', timeout=20000, onLine, provider='codex') {
-  if (process.argv.includes('--test-mode') && ((onLine && process.env.FARHAN_BRIDGE_TEST_TIMEOUT === '1') || (args[0]==='auth' && process.argv.includes('--worker') && process.env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT === '1'))) timeout=1000;
+  if (process.argv.includes('--test-mode') && ((onLine && process.env.FARHAN_BRIDGE_TEST_TIMEOUT === '1') || (args[0]==='auth' && process.argv.includes('--worker') && process.env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT === '1') || (args[0]==='login' && process.env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT === '1'))) timeout=1000;
   return new Promise((resolve,reject) => {
     const [cmd, prefix] = provider==='claude'?claudeRunner():runner();
+    // Held across every provider process, including checks without a job record.
+    // A crash, timeout, or child error leaves the marker for offline recovery.
+    const marker=join(root,'provider.lock');
+    let fd;
+    try { fd=openSync(marker,'wx',0o600); closeSync(fd); }
+    catch(e) { throw new Error(e.code==='EEXIST' ? 'A provider process may still be running or provider.lock needs offline recovery. See README provider lock recovery.' : 'Unable to create provider lock: '+e.message); }
     const env=cleanEnv(provider);
     if(process.argv.includes('--test-mode') && process.argv.includes('--worker') && process.env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT==='1') env.FARHAN_BRIDGE_TEST_HANG_AUTH='1';
     const child = spawn(cmd, [...prefix, ...args], {env,cwd:workspace,windowsHide:true,shell:false});
@@ -70,7 +76,11 @@ function execute(args, input='', timeout=20000, onLine, provider='codex') {
     if (onLine) {
       createInterface({input:child.stdout}).on('line',line=>{try{onLine(JSON.parse(line));}catch{}});
     } else child.stdout.on('data',d=>{out=(out+d.toString()).slice(-16000);});
-    child.on('close',code=>finish(null,{code,out,err:redact(err)}));
+    child.on('close',code=>{
+      if(settled) return; // Timeout or error: preserve the marker even after a late close.
+      try { unlinkSync(marker); } catch { return finish(new Error('Could not remove provider.lock. See README provider lock recovery.')); }
+      finish(null,{code,out,err:redact(err)});
+    });
     child.stdin.on('error',()=>{});
     child.stdin.end(input);
   });

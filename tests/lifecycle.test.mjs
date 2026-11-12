@@ -14,7 +14,8 @@ import {writeFileSync,readFileSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {join} from 'node:path';
 const args=process.argv.slice(2);
-if(args[0]==='login') console.log('Logged in using ChatGPT');
+if(args[0]==='login' && process.env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT==='1') await new Promise(resolve=>setTimeout(resolve,5000));
+else if(args[0]==='login') console.log('Logged in using ChatGPT');
 else if(args[0]==='auth' && process.env.FARHAN_BRIDGE_TEST_HANG_AUTH==='1') await new Promise(resolve=>setTimeout(resolve,5000));
 else if(args[0]==='auth') console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',apiProvider:'firstParty',subscriptionType:'pro'}));
 else if(args[0]==='--version') console.log(process.env.NODE_OPTIONS || process.env.NODE_PATH || process.env.OPENAI_API_KEY ? 'unexpected inherited option' : 'mock 1.0');
@@ -39,12 +40,13 @@ else {
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false}={}) {
+async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false}={}) {
   const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value'};
   if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
+  if(diagnosticTimeout) env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT='1';
   if(authTimeout) env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT='1';
   if(codex) env.FARHAN_BRIDGE_TEST_RUNNER=runner;
   if(claude) env.FARHAN_BRIDGE_TEST_CLAUDE_RUNNER=runner;
@@ -122,6 +124,7 @@ test('provider timeout preserves recovery state and blocks subsequent work',asyn
     // Synthetic provider has a finite lifetime; wait before simulating offline recovery.
     await delay(4200);
     await rm(file);
+    await rm(join(dir,'provider.lock'));
   }
 });
 
@@ -225,4 +228,19 @@ test('Claude authentication timeout preserves recovery state and blocks new work
   const blocked=await call('submit_codex_task',{task:'must be blocked'});
   assert.equal(blocked.result.isError,true);
   assert.match(blocked.result.content[0].text,/already active/);
+});
+
+
+test('diagnostic timeout leaves a cross-process recovery block without a job', async t=>{
+  const a=await setup(t,{diagnosticTimeout:true});
+  const b=await setup(t,{sharedData:a.data});
+  const result=await a.call('bridge_status');
+  assert.match(JSON.stringify(result),/time limit|provider.lock/);
+  await access(join(a.data,'provider.lock'));
+  const blocked=await b.call('submit_codex_task',{task:'must be blocked'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/provider.lock/);
+  // Wait for the finite mock process before fixture cleanup; do not remove the lock.
+  await delay(4500);
+  await access(join(a.data,'provider.lock'));
 });
