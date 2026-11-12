@@ -11,3 +11,9 @@ Reviewed draft PR #1 head 150113c7139abb8cbc85d6ccf9c8bba910fa7cfd and iteration
 5. Validate an actually deliverable marketplace package and payout eligibility for an India-based seller before sale.
 
 No implementation change was made in this review. The existing 18 tests do not exercise the timeout termination race. The draft remains unmerged; no credentials, paid calls or private correspondence were used.
+
+## Progress — surviving descendant test
+
+The timeout safeguard and integration test are in the draft. Parent 3c38b69 passed Actions run 43133136368. A new POSIX-only mock-provider test starts a child that outlives its timed-out parent, verifies a second submission is rejected, and confirms the child later writes a marker while the job remains running. Linux syntax check and all 40 discovered tests passed; 21 are in this checkout and 19 were discovered in another existing checkout. This demonstrates fail-closed behavior in one controlled POSIX case, not termination of the process tree. Windows skips this test; failed/delayed Windows taskkill, diagnostic command timeouts, recovery, and real-provider behavior remain unverified. No live provider calls.
+
+Next: test Windows termination failure and delayed descendants in controlled CI; examine whether timed-out status/auth commands can leave processes running without a job record. Then verify clean Windows install, real client interoperability, privacy, provider authorization, package and payout eligibility. No sale or release is approved by these tests.
