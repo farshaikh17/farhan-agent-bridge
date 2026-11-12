@@ -107,13 +107,14 @@ test('provider timeout preserves recovery state and blocks subsequent work',asyn
   for(const provider of ['codex','claude']) {
     const id=data(await call(`submit_${provider}_task`,{task:'trigger mock timeout'})).task_id;
     let job;
-    for(let i=0;i<100;i++) {
+    const deadline=Date.now()+20000;
+    do {
       job=data(await call(`get_${provider}_task`,{task_id:id}));
-      if(job.termination_unconfirmed) break;
+      if(job.termination_unconfirmed || ['completed','failed'].includes(job.status)) break;
       await delay(50);
-    }
-    assert.equal(job.status,'running');
-    assert.equal(job.termination_unconfirmed,true);
+    } while(Date.now()<deadline);
+    assert.equal(job.status,'running',`${provider}: ${JSON.stringify(job)}`);
+    assert.equal(job.termination_unconfirmed,true,`${provider}: ${JSON.stringify(job)}`);
     const file=join(dir,'jobs',id+'.json');
     const stored=JSON.parse(await readFile(file,'utf8'));
     assert.equal(stored.task,'trigger mock timeout');
@@ -234,12 +235,20 @@ test('Claude authentication timeout preserves recovery state and blocks new work
 test('diagnostic timeout leaves a cross-process recovery block without a job', async t=>{
   const a=await setup(t,{diagnosticTimeout:true});
   const b=await setup(t,{sharedData:a.data});
-  const result=await a.call('bridge_status');
-  assert.match(JSON.stringify(result),/time limit|provider.lock/);
-  await access(join(a.data,'provider.lock'));
-  const blocked=await b.call('submit_codex_task',{task:'must be blocked'});
+  const status=a.call('bridge_status');
+  const deadline=Date.now()+5000;
+  while(true) {
+    try { await access(join(a.data,'provider.lock')); break; }
+    catch(e) { if(Date.now()>=deadline) throw e; await delay(20); }
+  }
+  const [otherStatus,blocked]=await Promise.all([
+    b.call('bridge_status'), b.call('submit_codex_task',{task:'must be blocked'})
+  ]);
+  assert.match(JSON.stringify(otherStatus),/provider.lock/);
   assert.equal(blocked.result.isError,true);
   assert.match(blocked.result.content[0].text,/provider.lock/);
+  const result=await status;
+  assert.match(JSON.stringify(result),/time limit|provider.lock/);
   // Wait for the finite mock process before fixture cleanup; do not remove the lock.
   await delay(4500);
   await access(join(a.data,'provider.lock'));
