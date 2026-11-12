@@ -83,11 +83,18 @@ function execute(args, input='', timeout=20000, onLine, provider='codex') {
     child.on('error', e=>finish(unconfirmedProcessError('Provider process error: '+redact(e.message))));
     child.stderr.on('data',d=>{err=(err+d.toString()).slice(-16000);});
     if (onLine) {
-      createInterface({input:child.stdout}).on('line',line=>{try{
-        const event=JSON.parse(line); onLine(event);
-        if(process.argv.includes('--test-mode') && process.env.FARHAN_BRIDGE_TEST_CHILD_ERROR==='1' && event.type==='test_child_error')
-          child.emit('error',new Error('simulated child process error'));
-      }catch{}});
+      createInterface({input:child.stdout}).on('line',line=>{
+        if(settled) return;
+        let event;
+        try { event=JSON.parse(line); } catch { return; }
+        try {
+          if(process.argv.includes('--test-mode') && process.env.FARHAN_BRIDGE_TEST_EVENT_ERROR==='1' && event.type==='test_child_error')
+            throw new Error('simulated event handler error');
+          onLine(event);
+          if(process.argv.includes('--test-mode') && process.env.FARHAN_BRIDGE_TEST_CHILD_ERROR==='1' && event.type==='test_child_error')
+            child.emit('error',new Error('simulated child process error'));
+        } catch { finish(unconfirmedProcessError('Could not record provider progress.')); }
+      });
     } else child.stdout.on('data',d=>{out=(out+d.toString()).slice(-16000);});
     child.on('close',code=>{
       if(settled) return; // Timeout or error: preserve the marker even after a late close.

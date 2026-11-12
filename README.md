@@ -115,7 +115,7 @@ and returns its task ID. If it also cannot update the job record, it returns the
 ID and requires the offline recovery procedure below. A worker that starts and
 then exits is a different case and may still require investigation.
 
-If a task times out or the provider process reports an error, termination of the provider process tree is not confirmed.
+If a task times out, the provider reports a process error, or the bridge cannot record progress, termination of the provider process tree is not confirmed.
 The record stays running and blocks new submissions until offline recovery; its
 prompt and any temporary answer may remain on disk.
 

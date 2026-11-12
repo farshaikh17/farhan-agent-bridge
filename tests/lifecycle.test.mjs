@@ -54,13 +54,14 @@ else {
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false}={}) {
+async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false,eventError=false}={}) {
   const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value',AWS_ACCESS_KEY_ID:'synthetic',AWS_SECRET_ACCESS_KEY:'synthetic',aws_session_token:'synthetic',GH_TOKEN:'synthetic',GITHUB_TOKEN:'synthetic',GOOGLE_APPLICATION_CREDENTIALS:'synthetic',AZURE_CLIENT_SECRET:'synthetic',CLOUDFLARE_API_TOKEN:'synthetic'};
   if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
   if(childError) env.FARHAN_BRIDGE_TEST_CHILD_ERROR='1';
+  if(eventError) env.FARHAN_BRIDGE_TEST_EVENT_ERROR='1';
   if(terminationFailure) env.FARHAN_BRIDGE_TEST_TERMINATION_FAILURE='1';
   if(diagnosticTimeout) env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT='1';
   if(authTimeout) env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT='1';
@@ -347,5 +348,36 @@ test('provider process error retains the job and partial answer for recovery', a
     catch(e) { if(Date.now()>=markerDeadline) throw e; await delay(50); }
   }
   assert.equal(await readFile(marker,'utf8'),'alive');
+  await access(join(a.data,'provider.lock'));
+});
+
+
+test('event recording errors preserve recovery data and block later tasks', async t=>{
+  const a=await setup(t,{eventError:true});
+  const b=await setup(t,{sharedData:a.data});
+  const prompt='trigger child error';
+  const id=data(await a.call('submit_codex_task',{task:prompt})).task_id;
+  let job;
+  const deadline=Date.now()+20000;
+  do {
+    job=data(await a.call('get_codex_task',{task_id:id}));
+    if(job.termination_unconfirmed || ['completed','failed'].includes(job.status)) break;
+    await delay(50);
+  } while(Date.now()<deadline);
+  assert.equal(job.status,'running',JSON.stringify(job));
+  assert.equal(job.termination_unconfirmed,true,JSON.stringify(job));
+  assert.match(job.error,/Could not record provider progress/);
+  assert.equal(JSON.parse(await readFile(join(a.data,'jobs',id+'.json'),'utf8')).task,prompt);
+  assert.equal(await readFile(join(a.data,'jobs',id+'.answer.txt'),'utf8'),'partial answer');
+  await access(join(a.data,'provider.lock'));
+  const blocked=await b.call('submit_codex_task',{task:'must be blocked'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/already active/);
+  const marker=join(a.data,'child-error-survived');
+  const markerDeadline=Date.now()+10000;
+  while(true) {
+    try { await access(marker); break; }
+    catch(e) { if(Date.now()>=markerDeadline) throw e; await delay(50); }
+  }
   await access(join(a.data,'provider.lock'));
 });
