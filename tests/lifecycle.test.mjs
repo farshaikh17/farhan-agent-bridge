@@ -29,6 +29,13 @@ else {
     await new Promise(resolve=>setTimeout(resolve,5000));
     process.exit(0);
   }
+  if(input.includes('trigger child error')) {
+    if(args[0]==='exec') writeFileSync(args[args.indexOf('-o')+1],'partial answer');
+    console.log(JSON.stringify({type:'test_child_error'}));
+    await new Promise(resolve=>setTimeout(resolve,2000));
+    writeFileSync(join(process.env.FARHAN_BRIDGE_DATA,'child-error-survived'),'alive');
+    process.exit(0);
+  }
   if(input.includes('trigger failed termination')) {
     await new Promise(resolve=>setTimeout(resolve,2500));
     writeFileSync(join(process.env.FARHAN_BRIDGE_DATA,'provider-survived'),'alive after timeout');
@@ -45,12 +52,13 @@ else {
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false}={}) {
+async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false}={}) {
   const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value'};
   if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
+  if(childError) env.FARHAN_BRIDGE_TEST_CHILD_ERROR='1';
   if(terminationFailure) env.FARHAN_BRIDGE_TEST_TERMINATION_FAILURE='1';
   if(diagnosticTimeout) env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT='1';
   if(authTimeout) env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT='1';
@@ -306,4 +314,36 @@ test('failed termination preserves recovery until explicit action', async t=>{
   await delay(500); // Allow the finite mock to close after producing its marker.
   await access(join(a.data,'provider.lock'));
   assert.equal(data(await a.call('get_codex_task',{task_id:id})).status,'running');
+});
+
+
+test('provider process error retains the job and partial answer for recovery', async t=>{
+  const a=await setup(t,{childError:true});
+  const b=await setup(t,{sharedData:a.data});
+  const prompt='trigger child error';
+  const id=data(await a.call('submit_codex_task',{task:prompt})).task_id;
+  let job;
+  const deadline=Date.now()+20000;
+  do {
+    job=data(await a.call('get_codex_task',{task_id:id}));
+    if(job.termination_unconfirmed || ['completed','failed'].includes(job.status)) break;
+    await delay(50);
+  } while(Date.now()<deadline);
+  assert.equal(job.status,'running',JSON.stringify(job));
+  assert.equal(job.termination_unconfirmed,true,JSON.stringify(job));
+  assert.match(job.error,/process error/);
+  assert.equal(JSON.parse(await readFile(join(a.data,'jobs',id+'.json'),'utf8')).task,prompt);
+  assert.equal(await readFile(join(a.data,'jobs',id+'.answer.txt'),'utf8'),'partial answer');
+  await access(join(a.data,'provider.lock'));
+  const blocked=await b.call('submit_codex_task',{task:'must be blocked'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/already active/);
+  const marker=join(a.data,'child-error-survived');
+  const markerDeadline=Date.now()+10000;
+  while(true) {
+    try { await access(marker); break; }
+    catch(e) { if(Date.now()>=markerDeadline) throw e; await delay(50); }
+  }
+  assert.equal(await readFile(marker,'utf8'),'alive');
+  await access(join(a.data,'provider.lock'));
 });

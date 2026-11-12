@@ -45,6 +45,11 @@ function runner() {
 function redact(s) {
   return String(s).replace(/(?:sk-|tvly-|fco_|Bearer\s+)[A-Za-z0-9_.\-]{8,}/gi, '[REDACTED]').slice(-6000);
 }
+function unconfirmedProcessError(message) {
+  const error=new Error(message+' Process termination is unconfirmed. See README job and provider lock recovery.');
+  error.code='BRIDGE_PROCESS_UNCONFIRMED';
+  return error;
+}
 function execute(args, input='', timeout=20000, onLine, provider='codex') {
   if (process.argv.includes('--test-mode') && ((onLine && process.env.FARHAN_BRIDGE_TEST_TIMEOUT === '1') || (args[0]==='auth' && process.argv.includes('--worker') && process.env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT === '1') || (args[0]==='login' && process.env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT === '1'))) timeout=1000;
   return new Promise((resolve,reject) => {
@@ -57,7 +62,9 @@ function execute(args, input='', timeout=20000, onLine, provider='codex') {
     catch(e) { throw new Error(e.code==='EEXIST' ? 'A provider process may still be running or provider.lock needs offline recovery. See README provider lock recovery.' : 'Unable to create provider lock: '+e.message); }
     const env=cleanEnv(provider);
     if(process.argv.includes('--test-mode') && process.argv.includes('--worker') && process.env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT==='1') env.FARHAN_BRIDGE_TEST_HANG_AUTH='1';
-    const child = spawn(cmd, [...prefix, ...args], {env,cwd:workspace,windowsHide:true,shell:false});
+    let child;
+    try { child=spawn(cmd, [...prefix, ...args], {env,cwd:workspace,windowsHide:true,shell:false}); }
+    catch(e) { throw unconfirmedProcessError('Provider process could not be started: '+redact(e.message)); }
     let out='', err='', settled=false;
     const timer=setTimeout(() => {
       try {
@@ -73,14 +80,18 @@ function execute(args, input='', timeout=20000, onLine, provider='codex') {
       finish(error);
     },timeout);
     function finish(error, result) { if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(result); }
-    child.on('error', e=>finish(e));
+    child.on('error', e=>finish(unconfirmedProcessError('Provider process error: '+redact(e.message))));
     child.stderr.on('data',d=>{err=(err+d.toString()).slice(-16000);});
     if (onLine) {
-      createInterface({input:child.stdout}).on('line',line=>{try{onLine(JSON.parse(line));}catch{}});
+      createInterface({input:child.stdout}).on('line',line=>{try{
+        const event=JSON.parse(line); onLine(event);
+        if(process.argv.includes('--test-mode') && process.env.FARHAN_BRIDGE_TEST_CHILD_ERROR==='1' && event.type==='test_child_error')
+          child.emit('error',new Error('simulated child process error'));
+      }catch{}});
     } else child.stdout.on('data',d=>{out=(out+d.toString()).slice(-16000);});
     child.on('close',code=>{
       if(settled) return; // Timeout or error: preserve the marker even after a late close.
-      try { unlinkSync(marker); } catch { return finish(new Error('Could not remove provider.lock. See README provider lock recovery.')); }
+      try { unlinkSync(marker); } catch { return finish(unconfirmedProcessError('Could not remove provider.lock.')); }
       finish(null,{code,out,err:redact(err)});
     });
     child.stdin.on('error',()=>{});
@@ -121,7 +132,7 @@ async function claudeStatus() {
     const compatible=help.code===0&&['--safe-mode','--strict-mcp-config','--tools','--setting-sources'].every(x=>help.out.includes(x));
     const subscription=auth.code===0&&a.loggedIn===true&&a.authMethod==='claude.ai'&&a.apiProvider==='firstParty'&&['max','pro','team','enterprise'].includes(a.subscriptionType);
     return {installed:true,version:ver.out.trim(),subscription_sign_in:subscription,compatible_cli:compatible,email:a.email||null,subscription_type:a.subscriptionType||null,auth_method:a.authMethod||null,claude_home:claudeHome,remaining_allowance:'Not returned by auth status; check the official Usage page.',mode:'text analysis; optional public WebSearch/WebFetch only; no shell, local-file, MCP or publishing tools',next_step:subscription&&compatible?'Ready for a small Claude task.':'Use official Claude subscription login with CLAUDE_CONFIG_DIR set to claude_home; API/Console authentication is not accepted.'};
-  } catch(e){if(e.code==='BRIDGE_TIMEOUT') throw e; return {installed:false,subscription_sign_in:false,error:redact(e.message)};}
+  } catch(e){if(['BRIDGE_TIMEOUT','BRIDGE_PROCESS_UNCONFIRMED'].includes(e.code)) throw e; return {installed:false,subscription_sign_in:false,error:redact(e.message)};}
 }
 async function claudeWorker(job) {
   const s=await claudeStatus();
@@ -168,9 +179,10 @@ async function worker(id) {
     if(result.code!==0 || !job.answer.trim()) throw new Error(result.err || 'Codex returned no final answer.');
     job.status='completed';
   } catch(e) {
-    job.status=e.code==='BRIDGE_TIMEOUT'?'running':'failed';
+    const unconfirmed=['BRIDGE_TIMEOUT','BRIDGE_PROCESS_UNCONFIRMED'].includes(e.code);
+    job.status=unconfirmed?'running':'failed';
     job.error=redact(e.message);
-    if(e.code==='BRIDGE_TIMEOUT') job.termination_unconfirmed=true;
+    if(unconfirmed) job.termination_unconfirmed=true;
   }
   finally {
     finalizeJob(job,{save,removeAnswer:()=>unlinkSync(join(jobs,id+'.answer.txt'))});
