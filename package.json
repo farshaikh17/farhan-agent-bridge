@@ -5,10 +5,32 @@
   "description": "Local Windows MCP delegation through official Codex and Claude Code subscription logins",
   "type": "module",
   "license": "MIT",
-  "engines": {"node": ">=20"},
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server/bridge.mjs",
     "check": "node --check server/bridge.mjs",
-    "test": "node --test tests/protocol.test.mjs"
-  }
+    "test": "node --test"
+  },
+  "files": [
+    "server/bridge.mjs",
+    "server/finalize.mjs",
+    "server/launch.mjs",
+    "server/windows-taskkill.mjs",
+    "assets/icon.svg",
+    "plugin.json",
+    "mcp.json",
+    ".mcp.json",
+    ".codex-plugin/plugin.json",
+    "README.md",
+    "SECURITY.md",
+    "LICENSE",
+    "tests/finalize.test.mjs",
+    "tests/launch.test.mjs",
+    "tests/lifecycle.test.mjs",
+    "tests/protocol.test.mjs",
+    "tests/windows-taskkill.test.mjs",
+    "tests/package.test.mjs"
+  ]
 }

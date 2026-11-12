@@ -1,0 +1,9 @@
+# Child process environment review — 2026-11-09
+
+Base PR #1 head 390d128; Actions run 42655519042 passed on Windows/Ubuntu Node 20/24. Reviewed source, provider notes and checks. The child environment starts as a copy of the parent environment with a short denylist. The Codex tool description claimed no credentials were transferred, which the code cannot guarantee: unrelated environment variables may contain credentials and are passed to local subprocesses. No actual credential values were inspected.
+
+The Codex description, README and SECURITY.md now disclose the limitation. As a focused hardening step NODE_OPTIONS and NODE_PATH are removed from spawned worker and provider environments, avoiding propagation of Node startup options and module search path; the existing provider-variable denylist remains. Node documents child environment visibility: https://nodejs.org/api/child_process.html#child_processspawncommand-args-options. This does not isolate files, clear other secrets, constrain malicious CLI behavior or prove data was sent to a provider. NODE_OPTIONS can affect the bridge process itself before its code starts; use a clean launching environment.
+
+Validation: `npm run check` and `npm test` passed on Linux Node 24.22.1, 18/18 tests. Simulated provider checks confirm synthetic NODE_OPTIONS, NODE_PATH and OPENAI_API_KEY values are not inherited by the mock CLI; no real credential values used. Windows CI on this head and live CLI compatibility with custom runtime settings remain unverified. Removing these options may affect users whose CLI installation depends on them.
+
+Next: design and independently test a minimal child environment for supported Windows configurations, account for proxies, certificates and runtime discovery, and perform a security review before release. Also resolve provider commercial terms, billing, subprocess recovery, storage permissions and marketplace compatibility. No provider approval claimed.

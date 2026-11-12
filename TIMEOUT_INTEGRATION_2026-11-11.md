@@ -1,0 +1,5 @@
+# Timeout integration test — 2026-11-11
+
+Draft parent 3d73665 passed Actions run 43126079733. Added a test-mode-only short provider timeout and simulated both providers hanging. The test verifies a timeout keeps the job running, preserves the prompt and Codex partial answer, and blocks new submissions. Synthetic providers have finite lifetimes; this does not prove process-tree termination or safe manual recovery. On Windows the intentionally empty PATH also exercises a missing taskkill command if CI passes; inspect CI before claiming success.
+
+Linux: npm run check and npm test passed (39 tests discovered, including a second existing checkout; 20 belong to the changed copy). No live provider calls. Next: review CI on this commit, add controlled descendant and delayed/failed termination tests without assuming process death, then verify clean Windows installation, client interoperability and privacy. Provider commercial authorization, marketplace packaging and Indian payout eligibility remain unresolved. Draft only.
