@@ -14,7 +14,7 @@ its input or runtime directory to untrusted users or a network service.
 - Child processes inherit most environment variables. Variables containing credentials
   or other secrets may be accessible to provider CLIs and their subprocesses. Run
   the bridge from a clean environment without unrelated secrets.
-- This release strips NODE_OPTIONS, NODE_PATH, and several API-key and provider-override environment variables,
+- This release strips NODE_OPTIONS, NODE_PATH, selected provider settings, and selected AWS, GitHub, Google, Azure and Cloudflare credential variables,
   but this is not a complete security audit or a guarantee against every fallback.
   Keep paid extra usage disabled and inspect provider usage settings yourself.
 - Retrieved pages and worker answers are untrusted data. Review them before taking

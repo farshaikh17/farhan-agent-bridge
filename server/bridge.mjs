@@ -18,7 +18,7 @@ for (const p of [root, jobs, workspace, codexHome]) mkdirSync(p, {recursive:true
 function cleanEnv(provider='codex') {
   const env = {...process.env};
   for (const key of Object.keys(env)) {
-    if (/^(OPENAI_API_KEY|CODEX_API_KEY|OPENAI_BASE_URL|OPENAI_ORG_ID|OPENAI_PROJECT_ID|ANTHROPIC_.*|CLAUDE_.*|CLAUDECODE|NODE_OPTIONS|NODE_PATH)$/i.test(key)) delete env[key];
+    if (/^(OPENAI_API_KEY|CODEX_API_KEY|OPENAI_BASE_URL|OPENAI_ORG_ID|OPENAI_PROJECT_ID|ANTHROPIC_.*|CLAUDE_.*|CLAUDECODE|NODE_OPTIONS|NODE_PATH|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|GH_TOKEN|GITHUB_TOKEN|GOOGLE_APPLICATION_CREDENTIALS|AZURE_CLIENT_SECRET|CLOUDFLARE_API_TOKEN)$/i.test(key)) delete env[key];
   }
   env.CODEX_HOME=codexHome;
   env.CLAUDE_CONFIG_DIR=claudeHome;

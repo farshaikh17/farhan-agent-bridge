@@ -13,6 +13,8 @@ const fake = `
 import {writeFileSync,readFileSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {join} from 'node:path';
+const forbidden=/^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|GH_TOKEN|GITHUB_TOKEN|GOOGLE_APPLICATION_CREDENTIALS|AZURE_CLIENT_SECRET|CLOUDFLARE_API_TOKEN)$/i;
+if(Object.keys(process.env).some(k=>forbidden.test(k))) { console.error('unexpected sensitive environment variable'); process.exit(2); }
 const args=process.argv.slice(2);
 if(args[0]==='login' && process.env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT==='1') await new Promise(resolve=>setTimeout(resolve,5000));
 else if(args[0]==='login') console.log('Logged in using ChatGPT');
@@ -56,7 +58,7 @@ async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTim
   const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
-  const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value'};
+  const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value',AWS_ACCESS_KEY_ID:'synthetic',AWS_SECRET_ACCESS_KEY:'synthetic',aws_session_token:'synthetic',GH_TOKEN:'synthetic',GITHUB_TOKEN:'synthetic',GOOGLE_APPLICATION_CREDENTIALS:'synthetic',AZURE_CLIENT_SECRET:'synthetic',CLOUDFLARE_API_TOKEN:'synthetic'};
   if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
   if(childError) env.FARHAN_BRIDGE_TEST_CHILD_ERROR='1';
   if(terminationFailure) env.FARHAN_BRIDGE_TEST_TERMINATION_FAILURE='1';

@@ -166,8 +166,9 @@ Codex runs in a read-only shell sandbox with ordinary user configuration ignored
 supplied text, no shell/local-file/MCP tools, and optional public WebSearch/WebFetch.
 Neither worker inherits an authenticated browser through this bridge.
 
-The bridge removes NODE_OPTIONS, NODE_PATH and several API-key and provider-override
-environment variables from child processes. Other environment variables remain
+The bridge removes NODE_OPTIONS, NODE_PATH, several provider-specific settings, and
+selected AWS, GitHub, Google, Azure and Cloudflare credential variables from child
+processes. This may affect workflows that rely on those variables. Other environment variables remain
 visible to those processes and may contain secrets; use a clean environment. There is
 no configured paid API fallback, provider fallback or purchase flow. This is not
 a comprehensive security audit or a guarantee about future CLI behavior. Keep
