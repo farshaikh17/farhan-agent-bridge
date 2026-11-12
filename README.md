@@ -56,6 +56,10 @@ Clone/download the repository. Point a local stdio MCP client at:
 }
 ```
 
+The npm package file list includes only the named runtime, manifest, icon and
+user-documentation files. A GitHub source archive has a different file set. The
+package is private and has not been published or verified as a commercial product.
+
 The included `.mcp.json`, `mcp.json`, `plugin.json` and `.codex-plugin/plugin.json`
 are packaging variants using `${PLUGIN_ROOT}`. Import the variant supported by
 your client; repository tests do not establish compatibility with every client.
