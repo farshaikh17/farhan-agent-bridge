@@ -42,7 +42,8 @@ function claudeRunner() {
 function runner() {
   if (process.argv.includes('--test-mode') && process.env.FARHAN_BRIDGE_TEST_RUNNER) return [process.execPath, [process.env.FARHAN_BRIDGE_TEST_RUNNER]];
   const appdata = process.env.APPDATA || join(homedir(), 'AppData', 'Roaming');
-  const candidates = [join(appdata, 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js')];
+  const candidates = [];
+  if(isAbsolute(appdata)) candidates.push(join(appdata, 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js'));
   for (const dir of (process.env.PATH || '').split(delimiter)) {
     if(!isAbsolute(dir)) continue;
     candidates.push(join(dir, 'node_modules', '@openai', 'codex', 'bin', 'codex.js'));

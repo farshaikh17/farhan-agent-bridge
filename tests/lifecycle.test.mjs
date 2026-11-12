@@ -85,11 +85,12 @@ else {
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false,eventError=false,workerCrash=false,windowsTree=false,spacePath=false}={}) {
+async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false,eventError=false,workerCrash=false,windowsTree=false,spacePath=false,relativeAppData=false}={}) {
   const data=sharedData || await mkdtemp(join(tmpdir(),spacePath?'bridge lifecycle ':'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value',AWS_ACCESS_KEY_ID:'synthetic',AWS_SECRET_ACCESS_KEY:'synthetic',aws_session_token:'synthetic',GH_TOKEN:'synthetic',GITHUB_TOKEN:'synthetic',GOOGLE_APPLICATION_CREDENTIALS:'synthetic',AZURE_CLIENT_SECRET:'synthetic',CLOUDFLARE_API_TOKEN:'synthetic'};
+  if(relativeAppData) env.APPDATA='relative';
   env.FARHAN_BRIDGE_TEST_CAPTURE_CRASH='1';
   if(workerCrash) env.FARHAN_BRIDGE_TEST_WORKER_CRASH='1';
   if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
@@ -570,4 +571,16 @@ test('empty PATH does not discover a CLI from the current directory', async t=>{
   assert.equal(status.chatgpt_sign_in,false);
   assert.match(status.codex_error,/Codex npm entrypoint not found/);
   await assert.rejects(access(join(dir,'decoy-ran')),{code:'ENOENT'});
+});
+
+
+test('relative APPDATA does not discover a CLI from the current directory', async t=>{
+  const {call,data:dir}=await setup(t,{codex:false,claude:true,spacePath:true,relativeAppData:true});
+  const bin=join(dir,'relative','npm','node_modules','@openai','codex','bin');
+  await mkdir(bin,{recursive:true});
+  await writeFile(join(bin,'codex.js'), `require('node:fs').writeFileSync(process.env.FARHAN_BRIDGE_DATA+'/appdata-decoy-ran','yes')`);
+  const status=data(await call('bridge_status'));
+  assert.equal(status.chatgpt_sign_in,false);
+  assert.match(status.codex_error,/Codex npm entrypoint not found/);
+  await assert.rejects(access(join(dir,'appdata-decoy-ran')),{code:'ENOENT'});
 });
