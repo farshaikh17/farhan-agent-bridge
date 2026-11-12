@@ -11,6 +11,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 
 const fake = `
 import {writeFileSync,readFileSync} from 'node:fs';
+import {spawn} from 'node:child_process';
+import {join} from 'node:path';
 const args=process.argv.slice(2);
 if(args[0]==='login') console.log('Logged in using ChatGPT');
 else if(args[0]==='auth') console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',apiProvider:'firstParty',subscriptionType:'pro'}));
@@ -18,6 +20,13 @@ else if(args[0]==='--version') console.log(process.env.NODE_OPTIONS || process.e
 else if(args.includes('--help')) console.log('--ignore-user-config --safe-mode --strict-mcp-config --tools --setting-sources');
 else {
   const input=readFileSync(0,'utf8');
+  if(input.includes('trigger descendant timeout')) {
+    const marker=join(process.env.FARHAN_BRIDGE_DATA,'descendant-finished');
+    const script="setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'done'), 2500)";
+    spawn(process.execPath,['-e',script,marker],{stdio:'ignore'}).unref();
+    await new Promise(resolve=>setTimeout(resolve,5000));
+    process.exit(0);
+  }
   if(input.includes('trigger mock timeout')) {
     if(args[0]==='exec') writeFileSync(args[args.indexOf('-o')+1],'partial answer');
     await new Promise(resolve=>setTimeout(resolve,5000));
@@ -174,3 +183,25 @@ test('unreadable job records block submissions without exposing their contents',
   assert.equal(await readFile(file,'utf8'),'invalid private material');
 });
 
+
+
+test('a surviving POSIX descendant cannot permit overlapping work', {skip: process.platform==='win32'}, async t=>{
+  const {call,data:dir}=await setup(t,{timeout:true});
+  const id=data(await call('submit_codex_task',{task:'trigger descendant timeout'})).task_id;
+  let job;
+  for(let i=0;i<100;i++){
+    job=data(await call('get_codex_task',{task_id:id}));
+    if(job.termination_unconfirmed) break;
+    await delay(50);
+  }
+  assert.equal(job.termination_unconfirmed,true);
+  const blocked=await call('submit_codex_task',{task:'must remain blocked'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/already active/);
+  const marker=join(dir,'descendant-finished');
+  for(let i=0;i<100;i++){
+    try { await access(marker); break; } catch { await delay(50); }
+  }
+  assert.equal(await readFile(marker,'utf8'),'done');
+  assert.equal(data(await call('get_codex_task',{task_id:id})).status,'running');
+});
