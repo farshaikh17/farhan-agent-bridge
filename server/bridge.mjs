@@ -51,9 +51,15 @@ function execute(args, input='', timeout=20000, onLine, provider='codex') {
     const child = spawn(cmd, [...prefix, ...args], {env:cleanEnv(provider),cwd:workspace,windowsHide:true,shell:false});
     let out='', err='', settled=false;
     const timer=setTimeout(() => {
-      if (process.platform==='win32') spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
-      else child.kill('SIGKILL');
-      finish(new Error('Agent exceeded its time limit.'));
+      try {
+        if (process.platform==='win32') {
+          const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+          killer.on('error',()=>{});
+        } else child.kill('SIGKILL');
+      } catch {}
+      const error=new Error('Agent exceeded its time limit; process termination is unconfirmed. See README job recovery.');
+      error.code='BRIDGE_TIMEOUT';
+      finish(error);
     },timeout);
     function finish(error, result) { if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(result); }
     child.on('error', e=>finish(e));
@@ -146,7 +152,11 @@ async function worker(id) {
     delete job.last_message;
     if(result.code!==0 || !job.answer.trim()) throw new Error(result.err || 'Codex returned no final answer.');
     job.status='completed';
-  } catch(e) {job.status='failed';job.error=redact(e.message);}
+  } catch(e) {
+    job.status=e.code==='BRIDGE_TIMEOUT'?'running':'failed';
+    job.error=redact(e.message);
+    if(e.code==='BRIDGE_TIMEOUT') job.termination_unconfirmed=true;
+  }
   finally {
     finalizeJob(job,{save,removeAnswer:()=>unlinkSync(join(jobs,id+'.answer.txt'))});
   }

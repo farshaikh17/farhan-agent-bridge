@@ -37,3 +37,14 @@ test('cleanup failure is reported; absent file is harmless',()=>{
     assert.equal(Boolean(stored.cleanup_warning),code==='EACCES');
   }
 });
+
+
+test('unconfirmed timeout stays nonterminal and preserves recovery data',()=>{
+  const job={...initial(),status:'running',termination_unconfirmed:true};
+  let stored,removed=false;
+  finalizeJob(job,{save:j=>stored=snapshot(j),removeAnswer:()=>{removed=true;}});
+  assert.equal(stored.status,'running');
+  assert.equal(stored.task,'private');
+  assert.equal(stored.finished_at,undefined);
+  assert.equal(removed,false);
+});

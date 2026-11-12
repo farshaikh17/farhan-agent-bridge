@@ -1,0 +1,5 @@
+# Timeout recovery iteration — 2026-11-11
+
+Based on draft head becd176; Actions run 43118526757 passed. On worker timeout, termination is unconfirmed: preserve the running job, prompt and answer file, block new submissions, and require offline recovery. Catch taskkill spawn errors. This is a conservative mitigation, not proof of termination or complete process-tree isolation. Diagnostics timeouts and other child errors require further review.
+
+Linux: npm run check and npm test passed, 19 tests using simulated providers. A focused finalization test verifies preservation and nonterminal status; it does not simulate delayed or failed process termination end to end. Windows CI for this change and real provider testing remain outstanding. Next priority: deterministic end-to-end timeout/descendant tests on Windows and Linux, including termination failures, status probes and recovery. Continue clean Windows installation, client compatibility, security/privacy, provider terms, marketplace packaging and India payout review before sale. No credentials, provider calls or private correspondence used.
