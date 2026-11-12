@@ -56,8 +56,8 @@ Clone/download the repository. Point a local stdio MCP client at:
 }
 ```
 
-The npm package file list includes only the named runtime, manifest, icon and
-user-documentation files. A GitHub source archive has a different file set. The
+The npm package file list includes only the named runtime, manifest, icon,
+simulated-test and user-documentation files. A GitHub source archive has a different file set. The
 package is private and has not been published or verified as a commercial product.
 
 The included `.mcp.json`, `mcp.json`, `plugin.json` and `.codex-plugin/plugin.json`

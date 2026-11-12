@@ -25,6 +25,12 @@
     ".codex-plugin/plugin.json",
     "README.md",
     "SECURITY.md",
-    "LICENSE"
+    "LICENSE",
+    "tests/finalize.test.mjs",
+    "tests/launch.test.mjs",
+    "tests/lifecycle.test.mjs",
+    "tests/protocol.test.mjs",
+    "tests/windows-taskkill.test.mjs",
+    "tests/package.test.mjs"
   ]
 }
