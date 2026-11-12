@@ -148,6 +148,8 @@ result; inspect available results and provider usage before deciding to resubmit
 | `submit_claude_task` | Submit text; public web access is opt-in |
 | `get_claude_task` | Retrieve status, answer and usage |
 
+`bridge_status` is paused while a task is queued or running, or another process is checking status or submitting. Poll the active task first.
+
 Call `bridge_status`, submit one authorized task and poll the returned task ID
 until completed or failed. Queued/running is not completion. A task prompt may
 contain at most 50,000 characters. Workers time out after 20 minutes; Claude also

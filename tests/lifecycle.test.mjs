@@ -244,12 +244,30 @@ test('diagnostic timeout leaves a cross-process recovery block without a job', a
   const [otherStatus,blocked]=await Promise.all([
     b.call('bridge_status'), b.call('submit_codex_task',{task:'must be blocked'})
   ]);
-  assert.match(JSON.stringify(otherStatus),/provider.lock/);
+  assert.equal(otherStatus.result.isError,true);
+  assert.match(otherStatus.result.content[0].text,/submission lock/);
   assert.equal(blocked.result.isError,true);
-  assert.match(blocked.result.content[0].text,/provider.lock/);
+  assert.match(blocked.result.content[0].text,/submission lock/);
   const result=await status;
   assert.match(JSON.stringify(result),/time limit|provider.lock/);
+  const afterTimeout=await b.call('submit_codex_task',{task:'still blocked'});
+  assert.equal(afterTimeout.result.isError,true);
+  assert.match(afterTimeout.result.content[0].text,/provider.lock/);
   // Wait for the finite mock process before fixture cleanup; do not remove the lock.
   await delay(4500);
   await access(join(a.data,'provider.lock'));
+});
+
+
+test('status checks cannot interfere with an active worker', async t=>{
+  const a=await setup(t);
+  const b=await setup(t,{sharedData:a.data});
+  const id=data(await a.call('submit_codex_task',{task:'test task'})).task_id;
+  const blocked=await b.call('bridge_status');
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/task is active/);
+  const job=await completed(a.call,'codex',id);
+  assert.equal(job.status,'completed',job.error);
+  assert.equal(job.answer,'mock codex answer');
+  assert.equal(data(await b.call('bridge_status')).chatgpt_sign_in,true);
 });

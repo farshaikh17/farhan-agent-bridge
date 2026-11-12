@@ -191,10 +191,20 @@ function submissionLock() {
   let fd;
   try { fd=openSync(path,'wx',0o600); }
   catch(e) {
-    if(e.code==='EEXIST') throw new Error('Another bridge process is submitting a task, or a stale submission lock remains. See README lock recovery.');
+    if(e.code==='EEXIST') throw new Error('Another bridge process is checking status or submitting a task, or a stale submission lock remains. See README lock recovery.');
     throw new Error('Unable to create the submission lock: '+e.message);
   }
   return ()=>{closeSync(fd);try{unlinkSync(path);}catch{}};
+}
+// Serialize external diagnostics with submissions. Once a task record exists,
+// its worker owns provider access until it becomes terminal or is recovered.
+async function guardedStatus() {
+  const unlock=submissionLock();
+  try {
+    if(list().some(j=>['queued','running'].includes(j.status)))
+      throw new Error('A task is active. Retrieve its result before checking provider status; if stuck, see README job recovery.');
+    return await status();
+  } finally { unlock(); }
 }
 async function submit(task, provider='codex',allowWeb=false) {
   if(submitting)throw new Error('One submission is already being checked.');
@@ -257,7 +267,7 @@ async function main() {
         const a=msg.params?.arguments===undefined?{}:msg.params.arguments;let value;
         try {
           validateToolArguments(msg.params?.name,a);
-          if(msg.params.name==='bridge_status')value=await status();
+          if(msg.params.name==='bridge_status')value=await guardedStatus();
           else if(msg.params.name==='submit_codex_task')value=await submit(a.task);
           else if(msg.params.name==='submit_claude_task')value=await submit(a.task,'claude',a.allow_web);
           else if(['get_codex_task','get_claude_task'].includes(msg.params.name)){const j=load(a.task_id);const expected=msg.params.name==='get_claude_task'?'claude':'codex';if(j.provider!==expected)throw new Error(`This is not a ${expected==='claude'?'Claude':'Codex'} task.`);delete j.task;delete j.worker_pid;delete j.last_message;value=j;}
