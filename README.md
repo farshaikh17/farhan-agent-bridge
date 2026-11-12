@@ -106,7 +106,9 @@ provider processes and their descendants have stopped. If you cannot confirm thi
 do not remove the lock or retry. Once confirmed, remove only `provider.lock` from
 the runtime directory and restart the client. Also follow job recovery below for
 any queued or running task. The lock does not prove that provider descendants have
-stopped after a normally completed command.
+stopped after a normally completed command. On Windows, timeout termination uses
+`taskkill.exe` in the configured Windows system directory. If that directory is
+unavailable, termination is not attempted and recovery remains blocked.
 
 ## Job recovery after an interruption
 

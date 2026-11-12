@@ -1,4 +1,5 @@
 import {launchWorker} from './launch.mjs';
+import {windowsTaskkillPath} from './windows-taskkill.mjs';
 import {finalizeJob} from './finalize.mjs';
 import {spawn} from 'node:child_process';
 import {existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, openSync,closeSync,unlinkSync} from 'node:fs';
@@ -79,7 +80,7 @@ function execute(args, input='', timeout=20000, onLine, provider='codex') {
         // Test only: model a termination attempt that fails while the mock runs on.
         if (process.argv.includes('--test-mode') && onLine && process.env.FARHAN_BRIDGE_TEST_TERMINATION_FAILURE==='1') throw new Error('simulated termination failure');
         if (process.platform==='win32') {
-          const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+          const killer=spawn(windowsTaskkillPath(process.env),['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
           killer.on('error',()=>{});
         } else child.kill('SIGKILL');
       } catch {}

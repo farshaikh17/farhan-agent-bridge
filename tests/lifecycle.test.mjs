@@ -70,7 +70,7 @@ async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTim
   env.FARHAN_BRIDGE_TEST_CAPTURE_CRASH='1';
   if(workerCrash) env.FARHAN_BRIDGE_TEST_WORKER_CRASH='1';
   if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
-  if(windowsTree) { env.FARHAN_BRIDGE_TEST_TREE_TIMEOUT='1'; env.PATH=join(process.env.SystemRoot || process.env.WINDIR,'System32'); }
+  if(windowsTree) env.FARHAN_BRIDGE_TEST_TREE_TIMEOUT='1'; // PATH stays empty in this test.
   if(childError) env.FARHAN_BRIDGE_TEST_CHILD_ERROR='1';
   if(eventError) env.FARHAN_BRIDGE_TEST_EVENT_ERROR='1';
   if(terminationFailure) env.FARHAN_BRIDGE_TEST_TERMINATION_FAILURE='1';
