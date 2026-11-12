@@ -18,17 +18,23 @@ else if(args[0]==='--version') console.log(process.env.NODE_OPTIONS || process.e
 else if(args.includes('--help')) console.log('--ignore-user-config --safe-mode --strict-mcp-config --tools --setting-sources');
 else {
   const input=readFileSync(0,'utf8');
+  if(input.includes('trigger mock timeout')) {
+    if(args[0]==='exec') writeFileSync(args[args.indexOf('-o')+1],'partial answer');
+    await new Promise(resolve=>setTimeout(resolve,5000));
+    process.exit(0);
+  }
   if(input.includes('trigger mock failure')) {console.error('mock provider failed');process.exit(1);}
   await new Promise(resolve=>setTimeout(resolve,500));
   if(args[0]==='exec') {writeFileSync(args[args.indexOf('-o')+1],'mock codex answer'); console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:1}}));}
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true,sharedData}={}) {
+async function setup(t, {codex=true,claude=true,sharedData,timeout=false}={}) {
   const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value'};
+  if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
   if(codex) env.FARHAN_BRIDGE_TEST_RUNNER=runner;
   if(claude) env.FARHAN_BRIDGE_TEST_CLAUDE_RUNNER=runner;
   const child=spawn(process.execPath,[server,'--test-mode'],{env,stdio:['pipe','pipe','pipe']});
@@ -81,6 +87,31 @@ test('worker failure is reported and permits a later task',async t=>{
   assert.match(failed.error,/mock provider failed/);
   const retry=data(await call('submit_codex_task',{task:'retry'}));
   assert.equal((await completed(call,'codex',retry.task_id)).status,'completed');
+});
+
+test('provider timeout preserves recovery state and blocks subsequent work',async t=>{
+  const {call,data:dir}=await setup(t,{timeout:true});
+  for(const provider of ['codex','claude']) {
+    const id=data(await call(`submit_${provider}_task`,{task:'trigger mock timeout'})).task_id;
+    let job;
+    for(let i=0;i<100;i++) {
+      job=data(await call(`get_${provider}_task`,{task_id:id}));
+      if(job.termination_unconfirmed) break;
+      await delay(50);
+    }
+    assert.equal(job.status,'running');
+    assert.equal(job.termination_unconfirmed,true);
+    const file=join(dir,'jobs',id+'.json');
+    const stored=JSON.parse(await readFile(file,'utf8'));
+    assert.equal(stored.task,'trigger mock timeout');
+    if(provider==='codex') assert.equal(await readFile(join(dir,'jobs',id+'.answer.txt'),'utf8'),'partial answer');
+    const blocked=await call('submit_codex_task',{task:'must be blocked'});
+    assert.equal(blocked.result.isError,true);
+    assert.match(blocked.result.content[0].text,/already active/);
+    // Synthetic provider has a finite lifetime; wait before simulating offline recovery.
+    await delay(4200);
+    await rm(file);
+  }
 });
 
 
@@ -142,3 +173,4 @@ test('unreadable job records block submissions without exposing their contents',
   assert.doesNotMatch(blocked.result.content[0].text,/private material/);
   assert.equal(await readFile(file,'utf8'),'invalid private material');
 });
+

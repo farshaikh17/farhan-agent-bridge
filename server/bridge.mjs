@@ -46,6 +46,7 @@ function redact(s) {
   return String(s).replace(/(?:sk-|tvly-|fco_|Bearer\s+)[A-Za-z0-9_.\-]{8,}/gi, '[REDACTED]').slice(-6000);
 }
 function execute(args, input='', timeout=20000, onLine, provider='codex') {
+  if (onLine && process.argv.includes('--test-mode') && process.env.FARHAN_BRIDGE_TEST_TIMEOUT === '1') timeout=1000;
   return new Promise((resolve,reject) => {
     const [cmd, prefix] = provider==='claude'?claudeRunner():runner();
     const child = spawn(cmd, [...prefix, ...args], {env:cleanEnv(provider),cwd:workspace,windowsHide:true,shell:false});
@@ -257,3 +258,4 @@ async function main() {
   });
 }
 await main();
+
