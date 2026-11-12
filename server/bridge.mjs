@@ -59,6 +59,7 @@ function unconfirmedProcessError(message) {
 }
 function execute(args, input='', timeout=20000, onLine, provider='codex') {
   if (process.argv.includes('--test-mode') && ((onLine && process.env.FARHAN_BRIDGE_TEST_TIMEOUT === '1') || (args[0]==='auth' && process.argv.includes('--worker') && process.env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT === '1') || (args[0]==='login' && process.env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT === '1'))) timeout=1000;
+  if(process.argv.includes('--test-mode') && onLine && process.env.FARHAN_BRIDGE_TEST_TREE_TIMEOUT==='1') timeout=4000;
   return new Promise((resolve,reject) => {
     const [cmd, prefix] = provider==='claude'?claudeRunner():runner();
     // Held across every provider process, including checks without a job record.

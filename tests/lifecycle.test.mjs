@@ -24,6 +24,14 @@ else if(args[0]==='--version') console.log(process.env.NODE_OPTIONS || process.e
 else if(args.includes('--help')) console.log('--ignore-user-config --safe-mode --strict-mcp-config --tools --setting-sources');
 else {
   const input=readFileSync(0,'utf8');
+  if(input.includes('trigger windows tree timeout')) {
+    const root=process.env.FARHAN_BRIDGE_DATA;
+    const script="const fs=require('node:fs'); const path=require('node:path'); const root=process.env.FARHAN_BRIDGE_DATA; fs.writeFileSync(path.join(root,'tree-child-ready'),'ready'); setTimeout(()=>fs.writeFileSync(path.join(root,'tree-child-survived'),'alive'),8000)";
+    spawn(process.execPath,['-e',script],{stdio:'ignore'}).unref();
+    await new Promise(resolve=>setTimeout(resolve,12000));
+    writeFileSync(join(root,'tree-parent-survived'),'alive');
+    process.exit(0);
+  }
   if(input.includes('trigger descendant timeout')) {
     const marker=join(process.env.FARHAN_BRIDGE_DATA,'descendant-finished');
     const script="setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'done'), 2500)";
@@ -54,7 +62,7 @@ else {
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false,eventError=false,workerCrash=false}={}) {
+async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false,eventError=false,workerCrash=false,windowsTree=false}={}) {
   const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
@@ -62,6 +70,7 @@ async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTim
   env.FARHAN_BRIDGE_TEST_CAPTURE_CRASH='1';
   if(workerCrash) env.FARHAN_BRIDGE_TEST_WORKER_CRASH='1';
   if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
+  if(windowsTree) { env.FARHAN_BRIDGE_TEST_TREE_TIMEOUT='1'; env.PATH=join(process.env.SystemRoot || process.env.WINDIR,'System32'); }
   if(childError) env.FARHAN_BRIDGE_TEST_CHILD_ERROR='1';
   if(eventError) env.FARHAN_BRIDGE_TEST_EVENT_ERROR='1';
   if(terminationFailure) env.FARHAN_BRIDGE_TEST_TERMINATION_FAILURE='1';
@@ -410,4 +419,34 @@ test('synthetic worker crash records diagnostics and keeps submission blocked', 
   const blocked=await a.call('submit_codex_task',{task:'must be blocked'});
   assert.equal(blocked.result.isError,true);
   assert.match(blocked.result.content[0].text,/already active/);
+});
+
+
+test('Windows taskkill stops a controlled mock process tree after timeout', {skip:process.platform!=='win32'}, async t=>{
+  const a=await setup(t,{windowsTree:true});
+  const b=await setup(t,{sharedData:a.data});
+  const id=data(await a.call('submit_codex_task',{task:'trigger windows tree timeout'})).task_id;
+  const ready=join(a.data,'tree-child-ready');
+  const deadline=Date.now()+20000;
+  while(true) {
+    try { await access(ready); break; }
+    catch(e) { if(Date.now()>=deadline) throw e; await delay(50); }
+  }
+  let job;
+  do {
+    job=data(await a.call('get_codex_task',{task_id:id}));
+    if(job.termination_unconfirmed || ['completed','failed'].includes(job.status)) break;
+    await delay(50);
+  } while(Date.now()<deadline);
+  assert.equal(job.status,'running',await recoveryDiagnostics(a.data,id));
+  assert.equal(job.termination_unconfirmed,true,await recoveryDiagnostics(a.data,id));
+  const blocked=await b.call('submit_codex_task',{task:'must remain blocked'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/already active/);
+  // Both finite mock processes would leave markers if they outlived termination.
+  await delay(13000);
+  await assert.rejects(access(join(a.data,'tree-child-survived')),{code:'ENOENT'});
+  await assert.rejects(access(join(a.data,'tree-parent-survived')),{code:'ENOENT'});
+  await access(join(a.data,'provider.lock'));
+  assert.equal(data(await a.call('get_codex_task',{task_id:id})).status,'running');
 });
