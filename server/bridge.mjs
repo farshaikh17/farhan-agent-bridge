@@ -301,7 +301,7 @@ async function main() {
           if(msg.params.name==='bridge_status')value=await guardedStatus();
           else if(msg.params.name==='submit_codex_task')value=await submit(a.task);
           else if(msg.params.name==='submit_claude_task')value=await submit(a.task,'claude',a.allow_web);
-          else if(['get_codex_task','get_claude_task'].includes(msg.params.name)){const j=load(a.task_id);const expected=msg.params.name==='get_claude_task'?'claude':'codex';if(j.provider!==expected)throw new Error(`This is not a ${expected==='claude'?'Claude':'Codex'} task.`);delete j.task;delete j.worker_pid;delete j.last_message;value=j;}
+          else if(['get_codex_task','get_claude_task'].includes(msg.params.name)){const j=load(a.task_id);const expected=msg.params.name==='get_claude_task'?'claude':'codex';if(j.provider!==expected)throw new Error(`This is not a ${expected==='claude'?'Claude':'Codex'} task.`);delete j.task;delete j.worker_pid;delete j.last_message;if(['queued','running'].includes(j.status)) j.recovery_guidance='If this task stays stuck, see README job recovery. Close all clients and confirm workers and provider processes have stopped before changing records or locks.';value=j;}
           else throw new Error('Unknown tool.');
           return reply({content:[{type:'text',text:JSON.stringify(value)}]});
         }catch(e){return reply({isError:true,content:[{type:'text',text:redact(e.message)}]});}

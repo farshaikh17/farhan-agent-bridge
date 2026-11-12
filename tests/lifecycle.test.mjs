@@ -10,7 +10,7 @@ import {once} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 
 const fake = `
-import {writeFileSync,readFileSync} from 'node:fs';
+import {writeFileSync,readFileSync,mkdirSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {join} from 'node:path';
 const forbidden=/^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|GH_TOKEN|GITHUB_TOKEN|GOOGLE_APPLICATION_CREDENTIALS|AZURE_CLIENT_SECRET|CLOUDFLARE_API_TOKEN)$/i;
@@ -37,6 +37,17 @@ else {
     const script="setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'done'), 2500)";
     spawn(process.execPath,['-e',script,marker],{stdio:'ignore'}).unref();
     await new Promise(resolve=>setTimeout(resolve,5000));
+    process.exit(0);
+  }
+  if(input.includes('trigger filesystem failure')) {
+    const answer=args[args.indexOf('-o')+1];
+    const job=answer.slice(0,-'.answer.txt'.length)+'.json';
+    const worker=JSON.parse(readFileSync(job,'utf8')).worker_pid;
+    writeFileSync(answer,'partial answer');
+    mkdirSync(job+'.'+worker+'.tmp');
+    console.log(JSON.stringify({type:'turn.completed'}));
+    await new Promise(resolve=>setTimeout(resolve,2000));
+    writeFileSync(join(process.env.FARHAN_BRIDGE_DATA,'filesystem-provider-survived'),'alive');
     process.exit(0);
   }
   if(input.includes('trigger child error')) {
@@ -449,4 +460,36 @@ test('Windows taskkill stops a controlled mock process tree after timeout', {ski
   await assert.rejects(access(join(a.data,'tree-parent-survived')),{code:'ENOENT'});
   await access(join(a.data,'provider.lock'));
   assert.equal(data(await a.call('get_codex_task',{task_id:id})).status,'running');
+});
+
+
+test('real filesystem write failure leaves job blocked and provides recovery guidance', async t=>{
+  const a=await setup(t);
+  const b=await setup(t,{sharedData:a.data});
+  const prompt='trigger filesystem failure';
+  const id=data(await a.call('submit_codex_task',{task:prompt})).task_id;
+  const crash=join(a.data,'test-worker-error.json');
+  const deadline=Date.now()+20000;
+  while(true) {
+    try { await access(crash); break; }
+    catch(e) { if(Date.now()>=deadline) throw e; await delay(50); }
+  }
+  const diagnostic=JSON.parse(await readFile(crash,'utf8'));
+  assert.ok(diagnostic.code,JSON.stringify(diagnostic));
+  const job=data(await a.call('get_codex_task',{task_id:id}));
+  assert.equal(job.status,'running');
+  assert.match(job.recovery_guidance,/confirm workers and provider processes have stopped/);
+  assert.equal(JSON.parse(await readFile(join(a.data,'jobs',id+'.json'),'utf8')).task,prompt);
+  assert.equal(await readFile(join(a.data,'jobs',id+'.answer.txt'),'utf8'),'partial answer');
+  await access(join(a.data,'provider.lock'));
+  const blocked=await b.call('submit_codex_task',{task:'must be blocked'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/already active/);
+  const marker=join(a.data,'filesystem-provider-survived');
+  const markerDeadline=Date.now()+10000;
+  while(true) {
+    try { await access(marker); break; }
+    catch(e) { if(Date.now()>=markerDeadline) throw e; await delay(50); }
+  }
+  assert.equal(await readFile(marker,'utf8'),'alive');
 });
