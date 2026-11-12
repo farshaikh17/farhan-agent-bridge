@@ -199,7 +199,13 @@ async function worker(id) {
     const unconfirmed=['BRIDGE_TIMEOUT','BRIDGE_PROCESS_UNCONFIRMED'].includes(e.code);
     job.status=unconfirmed?'running':'failed';
     job.error=redact(e.message);
-    if(unconfirmed) job.termination_unconfirmed=true;
+    if(unconfirmed) {
+      job.termination_unconfirmed=true;
+      // A distinct marker can survive a failure to replace the job record. It
+      // contains no task text; if writing it also fails, the existing job and
+      // provider lock still block new work and require manual recovery.
+      try { writeFileSync(join(jobs,id+'.recovery'),'unconfirmed\n',{flag:'wx',mode:0o600}); } catch {}
+    }
   }
   finally {
     finalizeJob(job,{save,removeAnswer:()=>unlinkSync(join(jobs,id+'.answer.txt'))});
@@ -301,7 +307,7 @@ async function main() {
           if(msg.params.name==='bridge_status')value=await guardedStatus();
           else if(msg.params.name==='submit_codex_task')value=await submit(a.task);
           else if(msg.params.name==='submit_claude_task')value=await submit(a.task,'claude',a.allow_web);
-          else if(['get_codex_task','get_claude_task'].includes(msg.params.name)){const j=load(a.task_id);const expected=msg.params.name==='get_claude_task'?'claude':'codex';if(j.provider!==expected)throw new Error(`This is not a ${expected==='claude'?'Claude':'Codex'} task.`);delete j.task;delete j.worker_pid;delete j.last_message;if(['queued','running'].includes(j.status)) j.recovery_guidance='If this task stays stuck, see README job recovery. Close all clients and confirm workers and provider processes have stopped before changing records or locks.';value=j;}
+          else if(['get_codex_task','get_claude_task'].includes(msg.params.name)){const j=load(a.task_id);const expected=msg.params.name==='get_claude_task'?'claude':'codex';if(j.provider!==expected)throw new Error(`This is not a ${expected==='claude'?'Claude':'Codex'} task.`);delete j.task;delete j.worker_pid;delete j.last_message;if(['queued','running'].includes(j.status)&&existsSync(join(jobs,j.id+'.recovery'))) { j.termination_unconfirmed=true; j.recovery_notice='Recovery marker present; the provider may still be running.'; } if(['queued','running'].includes(j.status)) j.recovery_guidance='If this task stays stuck, see README job recovery. Close all clients and confirm workers and provider processes have stopped before changing records or locks.';value=j;}
           else throw new Error('Unknown tool.');
           return reply({content:[{type:'text',text:JSON.stringify(value)}]});
         }catch(e){return reply({isError:true,content:[{type:'text',text:redact(e.message)}]});}

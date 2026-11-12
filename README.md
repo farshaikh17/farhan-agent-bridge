@@ -132,7 +132,10 @@ that is not confirmation of success. Preserve the record and any matching
 
 Once all workers have stopped, locate the specific stuck `<task-id>.json` in the
 runtime directory's `jobs` folder. Move that file outside the `jobs` folder to a
-private location for investigation, then restart the client. The moved record is
+private location for investigation. If a matching `<task-id>.recovery` marker exists,
+move it to the same private location, then restart the client. A recovery marker
+may report an unconfirmed process when the job record could not be updated; its
+absence does not prove a process stopped or that an update succeeded. The moved record is
 no longer retrievable through the bridge and may contain a plaintext prompt. Do
 not move completed or unrelated jobs, authentication folders, or share the file.
 If an unreadable or invalid job record blocks submissions, use the same offline

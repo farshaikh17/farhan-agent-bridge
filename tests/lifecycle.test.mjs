@@ -478,8 +478,13 @@ test('real filesystem write failure leaves job blocked and provides recovery gui
   assert.ok(diagnostic.code,JSON.stringify(diagnostic));
   const job=data(await a.call('get_codex_task',{task_id:id}));
   assert.equal(job.status,'running');
+  assert.equal(job.termination_unconfirmed,true);
+  assert.match(job.recovery_notice,/Recovery marker present/);
   assert.match(job.recovery_guidance,/confirm workers and provider processes have stopped/);
-  assert.equal(JSON.parse(await readFile(join(a.data,'jobs',id+'.json'),'utf8')).task,prompt);
+  const stored=JSON.parse(await readFile(join(a.data,'jobs',id+'.json'),'utf8'));
+  assert.equal(stored.task,prompt);
+  assert.equal(stored.termination_unconfirmed,undefined);
+  assert.equal(await readFile(join(a.data,'jobs',id+'.recovery'),'utf8'),'unconfirmed\n');
   assert.equal(await readFile(join(a.data,'jobs',id+'.answer.txt'),'utf8'),'partial answer');
   await access(join(a.data,'provider.lock'));
   const blocked=await b.call('submit_codex_task',{task:'must be blocked'});
