@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp, rm, writeFile, readFile, access} from 'node:fs/promises';
+import {mkdtemp, mkdir, rm, writeFile, readFile, access} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -85,8 +85,8 @@ else {
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false,eventError=false,workerCrash=false,windowsTree=false}={}) {
-  const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
+async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false,eventError=false,workerCrash=false,windowsTree=false,spacePath=false}={}) {
+  const data=sharedData || await mkdtemp(join(tmpdir(),spacePath?'bridge lifecycle ':'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value',AWS_ACCESS_KEY_ID:'synthetic',AWS_SECRET_ACCESS_KEY:'synthetic',aws_session_token:'synthetic',GH_TOKEN:'synthetic',GITHUB_TOKEN:'synthetic',GOOGLE_APPLICATION_CREDENTIALS:'synthetic',AZURE_CLIENT_SECRET:'synthetic',CLOUDFLARE_API_TOKEN:'synthetic'};
@@ -99,9 +99,10 @@ async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTim
   if(terminationFailure) env.FARHAN_BRIDGE_TEST_TERMINATION_FAILURE='1';
   if(diagnosticTimeout) env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT='1';
   if(authTimeout) env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT='1';
+  delete env.FARHAN_BRIDGE_TEST_RUNNER;
   if(codex) env.FARHAN_BRIDGE_TEST_RUNNER=runner;
   if(claude) env.FARHAN_BRIDGE_TEST_CLAUDE_RUNNER=runner;
-  const child=spawn(process.execPath,[server,'--test-mode'],{env,stdio:['pipe','pipe','pipe']});
+  const child=spawn(process.execPath,[server,'--test-mode'],{env,cwd:spacePath?data:undefined,stdio:['pipe','pipe','pipe']});
   const pending=new Map();let sequence=0,stderr='';
   child.stderr.on('data',d=>stderr+=d);
   const lines=createInterface({input:child.stdout});
@@ -380,7 +381,7 @@ test('provider process error retains the job and partial answer for recovery', a
   const deadline=Date.now()+20000;
   do {
     job=data(await a.call('get_codex_task',{task_id:id}));
-    if(job.termination_unconfirmed || ['completed','failed'].includes(job.status)) break;
+    if((job.termination_unconfirmed && job.error) || ['completed','failed'].includes(job.status)) break;
     await delay(50);
   } while(Date.now()<deadline);
   assert.equal(job.status,'running',JSON.stringify(job));
@@ -412,7 +413,7 @@ test('event recording errors preserve recovery data and block later tasks', asyn
   const deadline=Date.now()+20000;
   do {
     job=data(await a.call('get_codex_task',{task_id:id}));
-    if(job.termination_unconfirmed || ['completed','failed'].includes(job.status)) break;
+    if((job.termination_unconfirmed && job.error) || ['completed','failed'].includes(job.status)) break;
     await delay(50);
   } while(Date.now()<deadline);
   assert.equal(job.status,'running',JSON.stringify(job));
@@ -536,4 +537,37 @@ test('pre-existing linked temporary file is not overwritten', async t=>{
   assert.equal(blocked.result.isError,true);
   assert.match(blocked.result.content[0].text,/already active/);
   await delay(2500);
+});
+
+
+test('discovers a mock npm Codex entrypoint under a path with spaces', async t=>{
+  // Claude also uses a mock runner; no real provider or credentials are used.
+  const {call,data:dir}=await setup(t,{codex:false,claude:true,spacePath:true});
+  const bin=join(dir,'empty','npm','node_modules','@openai','codex','bin');
+  await mkdir(bin,{recursive:true});
+  await writeFile(join(bin,'codex.js'), `
+    const args=process.argv.slice(2);
+    if(process.env.OPENAI_API_KEY) process.exit(2);
+    if(args[0]==='login') console.log('Logged in using ChatGPT');
+    else if(args[0]==='--version') console.log('discovery mock 1.0');
+    else if(args.includes('--help')) console.log('--ignore-user-config');
+    else process.exit(3);
+  `);
+  const status=data(await call('bridge_status'));
+  assert.equal(status.chatgpt_sign_in,true);
+  assert.equal(status.compatible_cli,true);
+  assert.equal(status.version,'discovery mock 1.0');
+  assert.equal(status.claude.subscription_sign_in,true);
+});
+
+
+test('empty PATH does not discover a CLI from the current directory', async t=>{
+  const {call,data:dir}=await setup(t,{codex:false,claude:true,spacePath:true});
+  const bin=join(dir,'node_modules','@openai','codex','bin');
+  await mkdir(bin,{recursive:true});
+  await writeFile(join(bin,'codex.js'), `require('node:fs').writeFileSync(process.env.FARHAN_BRIDGE_DATA+'/decoy-ran','yes')`);
+  const status=data(await call('bridge_status'));
+  assert.equal(status.chatgpt_sign_in,false);
+  assert.match(status.codex_error,/Codex npm entrypoint not found/);
+  await assert.rejects(access(join(dir,'decoy-ran')),{code:'ENOENT'});
 });

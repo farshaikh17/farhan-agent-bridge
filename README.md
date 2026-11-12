@@ -86,7 +86,8 @@ accept account terms, or copy browser credentials.
 Claude runtime discovery in this release looks for `runtimes/claude/claude.exe`
 inside the runtime directory, then `%USERPROFILE%/.local/bin/claude.exe`.
 Codex discovery looks for its npm entrypoint in the usual Windows npm directory
-and PATH-related npm locations. This is Windows-oriented discovery, not a general
+and absolute PATH-related npm locations. Empty and relative PATH entries are ignored;
+use an absolute installation path. This is Windows-oriented discovery, not a general
 cross-platform installer.
 
 ## Recovering a stuck submission lock

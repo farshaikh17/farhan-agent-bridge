@@ -4,7 +4,7 @@ import {finalizeJob} from './finalize.mjs';
 import {spawn} from 'node:child_process';
 import {existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, openSync,closeSync,unlinkSync} from 'node:fs';
 import {homedir} from 'node:os';
-import {join, dirname, delimiter} from 'node:path';
+import {join, dirname, delimiter, isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {createInterface} from 'node:readline';
@@ -44,6 +44,7 @@ function runner() {
   const appdata = process.env.APPDATA || join(homedir(), 'AppData', 'Roaming');
   const candidates = [join(appdata, 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js')];
   for (const dir of (process.env.PATH || '').split(delimiter)) {
+    if(!isAbsolute(dir)) continue;
     candidates.push(join(dir, 'node_modules', '@openai', 'codex', 'bin', 'codex.js'));
     candidates.push(join(dir, '..', 'lib', 'node_modules', '@openai', 'codex', 'bin', 'codex.js'));
   }
