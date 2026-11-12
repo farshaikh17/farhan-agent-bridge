@@ -29,6 +29,11 @@ else {
     await new Promise(resolve=>setTimeout(resolve,5000));
     process.exit(0);
   }
+  if(input.includes('trigger failed termination')) {
+    await new Promise(resolve=>setTimeout(resolve,2500));
+    writeFileSync(join(process.env.FARHAN_BRIDGE_DATA,'provider-survived'),'alive after timeout');
+    process.exit(0);
+  }
   if(input.includes('trigger mock timeout')) {
     if(args[0]==='exec') writeFileSync(args[args.indexOf('-o')+1],'partial answer');
     await new Promise(resolve=>setTimeout(resolve,5000));
@@ -40,12 +45,13 @@ else {
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false}={}) {
+async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false}={}) {
   const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value'};
   if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
+  if(terminationFailure) env.FARHAN_BRIDGE_TEST_TERMINATION_FAILURE='1';
   if(diagnosticTimeout) env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT='1';
   if(authTimeout) env.FARHAN_BRIDGE_TEST_AUTH_TIMEOUT='1';
   if(codex) env.FARHAN_BRIDGE_TEST_RUNNER=runner;
@@ -270,4 +276,34 @@ test('status checks cannot interfere with an active worker', async t=>{
   assert.equal(job.status,'completed',job.error);
   assert.equal(job.answer,'mock codex answer');
   assert.equal(data(await b.call('bridge_status')).chatgpt_sign_in,true);
+});
+
+
+test('failed termination preserves recovery until explicit action', async t=>{
+  const a=await setup(t,{timeout:true,terminationFailure:true});
+  const b=await setup(t,{sharedData:a.data});
+  const id=data(await a.call('submit_codex_task',{task:'trigger failed termination'})).task_id;
+  let job;
+  const deadline=Date.now()+20000;
+  do {
+    job=data(await a.call('get_codex_task',{task_id:id}));
+    if(job.termination_unconfirmed || ['completed','failed'].includes(job.status)) break;
+    await delay(50);
+  } while(Date.now()<deadline);
+  assert.equal(job.status,'running',JSON.stringify(job));
+  assert.equal(job.termination_unconfirmed,true,JSON.stringify(job));
+  await access(join(a.data,'provider.lock'));
+  const blocked=await b.call('submit_codex_task',{task:'must stay blocked'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/already active/);
+  const marker=join(a.data,'provider-survived');
+  const markerDeadline=Date.now()+10000;
+  while(true) {
+    try { await access(marker); break; }
+    catch(e) { if(Date.now()>=markerDeadline) throw e; await delay(50); }
+  }
+  assert.equal(await readFile(marker,'utf8'),'alive after timeout');
+  await delay(500); // Allow the finite mock to close after producing its marker.
+  await access(join(a.data,'provider.lock'));
+  assert.equal(data(await a.call('get_codex_task',{task_id:id})).status,'running');
 });

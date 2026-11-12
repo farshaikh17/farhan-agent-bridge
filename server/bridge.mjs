@@ -61,6 +61,8 @@ function execute(args, input='', timeout=20000, onLine, provider='codex') {
     let out='', err='', settled=false;
     const timer=setTimeout(() => {
       try {
+        // Test only: model a termination attempt that fails while the mock runs on.
+        if (process.argv.includes('--test-mode') && onLine && process.env.FARHAN_BRIDGE_TEST_TERMINATION_FAILURE==='1') throw new Error('simulated termination failure');
         if (process.platform==='win32') {
           const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
           killer.on('error',()=>{});
