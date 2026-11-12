@@ -153,7 +153,7 @@ async function claudeStatus() {
 async function claudeWorker(job) {
   const s=await claudeStatus();
   if(!s.subscription_sign_in||!s.compatible_cli)throw new Error(s.next_step||s.error);
-  job.account={email:s.email,subscription_type:s.subscription_type,auth_method:s.auth_method};save(job);
+  job.account={subscription_type:s.subscription_type,auth_method:s.auth_method};save(job);
   const allowed=job.allow_web?'WebSearch,WebFetch':'';
   const args=['--safe-mode','--setting-sources','','--strict-mcp-config','--disable-slash-commands','--tools',allowed,'--disallowedTools','mcp__*','--permission-mode','dontAsk','--model','sonnet','--max-turns','12','--output-format','stream-json','--verbose','-p'];
   if(job.allow_web)args.unshift('--allowedTools','WebSearch,WebFetch');

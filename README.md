@@ -71,6 +71,10 @@ By default the runtime directory is `%USERPROFILE%/.farhan-agent-bridge`:
 | `workspace` | Worker working directory |
 | `jobs` | Plaintext task prompts, results and usage |
 
+Claude status can display the account email for verification. New job records retain
+subscription and authentication type but do not deliberately store that email.
+Existing records are not changed, and prompts or provider output can still contain it.
+
 `FARHAN_BRIDGE_DATA` can select another runtime directory. Keep it outside the
 repository. Do not upload it or place authentication state in an issue.
 

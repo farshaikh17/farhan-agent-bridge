@@ -19,7 +19,7 @@ const args=process.argv.slice(2);
 if(args[0]==='login' && process.env.FARHAN_BRIDGE_TEST_DIAGNOSTIC_TIMEOUT==='1') await new Promise(resolve=>setTimeout(resolve,5000));
 else if(args[0]==='login') console.log('Logged in using ChatGPT');
 else if(args[0]==='auth' && process.env.FARHAN_BRIDGE_TEST_HANG_AUTH==='1') await new Promise(resolve=>setTimeout(resolve,5000));
-else if(args[0]==='auth') console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',apiProvider:'firstParty',subscriptionType:'pro'}));
+else if(args[0]==='auth') console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',apiProvider:'firstParty',subscriptionType:'pro',email:'synthetic@example.invalid'}));
 else if(args[0]==='--version') console.log(process.env.NODE_OPTIONS || process.env.NODE_PATH || process.env.OPENAI_API_KEY ? 'unexpected inherited option' : 'mock 1.0');
 else if(args.includes('--help')) console.log('--ignore-user-config --safe-mode --strict-mcp-config --tools --setting-sources');
 else {
@@ -125,6 +125,7 @@ test('mock providers complete tasks and prevent overlapping work',async t=>{
   const s=data(await call('bridge_status'));
   assert.equal(s.chatgpt_sign_in,true); assert.equal(s.claude.subscription_sign_in,true);
   assert.equal(s.version,'mock 1.0'); assert.equal(s.claude.version,'mock 1.0');
+  assert.equal(s.claude.email,'synthetic@example.invalid');
   for(const provider of ['codex','claude']){
     const submitted=data(await call(`submit_${provider}_task`,{task:'test task'}));
     const blocked=await call(`submit_${provider}_task`,{task:'second task'});
@@ -136,6 +137,12 @@ test('mock providers complete tasks and prevent overlapping work',async t=>{
     assert.equal(j.task,undefined);
     const stored=JSON.parse(await readFile(join(dir,'jobs',submitted.task_id+'.json'),'utf8'));
     assert.equal(stored.task,undefined);
+    if(provider==='claude') {
+      assert.equal(stored.account.subscription_type,'pro');
+      assert.equal(stored.account.auth_method,'claude.ai');
+      assert.equal(stored.account.email,undefined);
+      assert.doesNotMatch(JSON.stringify(stored),/synthetic@example\.invalid/);
+    }
     if(provider==='codex') await assert.rejects(access(join(dir,'jobs',submitted.task_id+'.answer.txt')), {code:'ENOENT'});
   }
 });

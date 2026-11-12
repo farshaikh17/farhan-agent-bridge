@@ -5,6 +5,9 @@ its input or runtime directory to untrusted users or a network service.
 
 - Job prompts, answers, account metadata and usage are saved locally in plaintext.
   Keep the runtime directory outside this repository and do not commit it.
+- Claude status can expose the signed-in account email to the client; new job
+  records omit that email from account metadata. Existing records are not migrated,
+  and prompts or provider output may still contain personal information.
 - Dedicated CLI authentication directories contain sensitive login state. Never
   upload them, a browser profile, or an archive of the runtime directory.
 - Codex uses a read-only sandbox. Read-only is not a guarantee that unrelated
