@@ -142,6 +142,8 @@ may report an unconfirmed process when the job record could not be updated; its
 absence does not prove a process stopped or that an update succeeded. The moved record is
 no longer retrievable through the bridge and may contain a plaintext prompt. Do
 not move completed or unrelated jobs, authentication folders, or share the file.
+A failed job update may leave a temporary file in the jobs folder; do not
+overwrite it blindly, as it may contain sensitive data.
 If an unreadable or invalid job record blocks submissions, use the same offline
 procedure for that specific record; make a private backup before moving it. An
 interrupted task may already have consumed provider allowance or produced a partial

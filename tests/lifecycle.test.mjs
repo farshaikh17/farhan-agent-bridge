@@ -10,7 +10,7 @@ import {once} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 
 const fake = `
-import {writeFileSync,readFileSync,mkdirSync} from 'node:fs';
+import {writeFileSync,readFileSync,mkdirSync,linkSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {join} from 'node:path';
 const forbidden=/^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|GH_TOKEN|GITHUB_TOKEN|GOOGLE_APPLICATION_CREDENTIALS|AZURE_CLIENT_SECRET|CLOUDFLARE_API_TOKEN)$/i;
@@ -37,6 +37,18 @@ else {
     const script="setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'done'), 2500)";
     spawn(process.execPath,['-e',script,marker],{stdio:'ignore'}).unref();
     await new Promise(resolve=>setTimeout(resolve,5000));
+    process.exit(0);
+  }
+  if(input.includes('trigger temp link collision')) {
+    const answer=args[args.indexOf('-o')+1];
+    const job=answer.slice(0,-'.answer.txt'.length)+'.json';
+    const worker=JSON.parse(readFileSync(job,'utf8')).worker_pid;
+    const sentinel=join(process.env.FARHAN_BRIDGE_DATA,'protected-sentinel');
+    writeFileSync(answer,'partial answer');
+    writeFileSync(sentinel,'unchanged synthetic data');
+    linkSync(sentinel,job+'.'+worker+'.tmp');
+    console.log(JSON.stringify({type:'turn.completed'}));
+    await new Promise(resolve=>setTimeout(resolve,2000));
     process.exit(0);
   }
   if(input.includes('trigger filesystem failure')) {
@@ -499,5 +511,29 @@ test('real filesystem write failure leaves job blocked and provides recovery gui
   assert.match(blocked.result.content[0].text,/already active/);
   // The mock may exit when its worker's pipes close; allow its finite timer to
   // finish before cleanup without assuming it survives the worker crash.
+  await delay(2500);
+});
+
+
+test('pre-existing linked temporary file is not overwritten', async t=>{
+  const a=await setup(t);
+  const b=await setup(t,{sharedData:a.data});
+  const id=data(await a.call('submit_codex_task',{task:'trigger temp link collision'})).task_id;
+  const crash=join(a.data,'test-worker-error.json');
+  const deadline=Date.now()+20000;
+  while(true) {
+    try { await access(crash); break; }
+    catch(e) { if(Date.now()>=deadline) throw e; await delay(50); }
+  }
+  const diagnostic=JSON.parse(await readFile(crash,'utf8'));
+  assert.equal(diagnostic.code,'EEXIST');
+  assert.equal(await readFile(join(a.data,'protected-sentinel'),'utf8'),'unchanged synthetic data');
+  const job=data(await a.call('get_codex_task',{task_id:id}));
+  assert.equal(job.status,'running');
+  assert.equal(job.termination_unconfirmed,true);
+  assert.equal(await readFile(join(a.data,'jobs',id+'.answer.txt'),'utf8'),'partial answer');
+  const blocked=await b.call('submit_codex_task',{task:'must be blocked'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/already active/);
   await delay(2500);
 });

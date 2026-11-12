@@ -120,7 +120,8 @@ function pathFor(id) {
 }
 function save(job) {
   const path=pathFor(job.id), tmp=path+'.'+process.pid+'.tmp';
-  writeFileSync(tmp,JSON.stringify(job,null,2),{mode:0o600});renameSync(tmp,path);
+  // Never truncate an existing temporary file or follow a pre-existing link.
+  writeFileSync(tmp,JSON.stringify(job,null,2),{mode:0o600,flag:'wx'});renameSync(tmp,path);
 }
 function load(id) {return JSON.parse(readFileSync(pathFor(id),'utf8'));}
 async function status() {
