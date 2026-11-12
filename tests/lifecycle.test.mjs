@@ -54,11 +54,13 @@ else {
   else console.log(JSON.stringify({type:'result',subtype:'success',result:'mock claude answer',usage:{input_tokens:1}}));
 }
 `;
-async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false,eventError=false}={}) {
+async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTimeout=false,diagnosticTimeout=false,terminationFailure=false,childError=false,eventError=false,workerCrash=false}={}) {
   const data=sharedData || await mkdtemp(join(tmpdir(),'bridge-lifecycle-'));
   const runner=join(data,'mock.mjs'); await writeFile(runner,fake);
   const server=fileURLToPath(new URL('../server/bridge.mjs',import.meta.url));
   const env={...process.env,FARHAN_BRIDGE_DATA:data,APPDATA:join(data,'empty'),PATH:'',NODE_OPTIONS:'--no-warnings',NODE_PATH:'synthetic-test-path',OPENAI_API_KEY:'synthetic-test-value',AWS_ACCESS_KEY_ID:'synthetic',AWS_SECRET_ACCESS_KEY:'synthetic',aws_session_token:'synthetic',GH_TOKEN:'synthetic',GITHUB_TOKEN:'synthetic',GOOGLE_APPLICATION_CREDENTIALS:'synthetic',AZURE_CLIENT_SECRET:'synthetic',CLOUDFLARE_API_TOKEN:'synthetic'};
+  env.FARHAN_BRIDGE_TEST_CAPTURE_CRASH='1';
+  if(workerCrash) env.FARHAN_BRIDGE_TEST_WORKER_CRASH='1';
   if(timeout) env.FARHAN_BRIDGE_TEST_TIMEOUT='1';
   if(childError) env.FARHAN_BRIDGE_TEST_CHILD_ERROR='1';
   if(eventError) env.FARHAN_BRIDGE_TEST_EVENT_ERROR='1';
@@ -77,6 +79,16 @@ async function setup(t, {codex=true,claude=true,sharedData,timeout=false,authTim
   return {call,data};
 }
 function data(result){assert.notEqual(result.result?.isError,true,result.result?.content?.[0]?.text);return JSON.parse(result.result.content[0].text);}
+async function recoveryDiagnostics(dir,id) {
+  const result={};
+  for(const [key,path] of Object.entries({job:join(dir,'jobs',id+'.json'),lock:join(dir,'provider.lock'),answer:join(dir,'jobs',id+'.answer.txt'),marker:join(dir,'child-error-survived'),crash:join(dir,'test-worker-error.json')})) {
+    try {
+      await access(path);
+      result[key]=key==='job'||key==='crash'?JSON.parse(await readFile(path,'utf8')):'present';
+    } catch(e) { result[key]=e.code||e.name; }
+  }
+  return JSON.stringify(result);
+}
 async function completed(call,provider,id){for(let i=0;i<100;i++){const j=data(await call(`get_${provider}_task`,{task_id:id}));if(['completed','failed'].includes(j.status))return j;await delay(50);}throw new Error('Worker did not finish');}
 
 test('status reports Claude even if Codex is absent',async t=>{
@@ -365,7 +377,7 @@ test('event recording errors preserve recovery data and block later tasks', asyn
     await delay(50);
   } while(Date.now()<deadline);
   assert.equal(job.status,'running',JSON.stringify(job));
-  assert.equal(job.termination_unconfirmed,true,JSON.stringify(job));
+  assert.equal(job.termination_unconfirmed,true,await recoveryDiagnostics(a.data,id));
   assert.match(job.error,/Could not record provider progress/);
   assert.equal(JSON.parse(await readFile(join(a.data,'jobs',id+'.json'),'utf8')).task,prompt);
   assert.equal(await readFile(join(a.data,'jobs',id+'.answer.txt'),'utf8'),'partial answer');
@@ -380,4 +392,22 @@ test('event recording errors preserve recovery data and block later tasks', asyn
     catch(e) { if(Date.now()>=markerDeadline) throw e; await delay(50); }
   }
   await access(join(a.data,'provider.lock'));
+});
+
+
+test('synthetic worker crash records diagnostics and keeps submission blocked', async t=>{
+  const a=await setup(t,{workerCrash:true});
+  const id=data(await a.call('submit_codex_task',{task:'synthetic crash'})).task_id;
+  const crash=join(a.data,'test-worker-error.json');
+  const deadline=Date.now()+15000;
+  while(true) {
+    try { await access(crash); break; }
+    catch(e) { if(Date.now()>=deadline) throw e; await delay(50); }
+  }
+  const diagnostic=JSON.parse(await readFile(crash,'utf8'));
+  assert.match(diagnostic.stack,/synthetic worker crash/);
+  assert.equal(data(await a.call('get_codex_task',{task_id:id})).status,'running');
+  const blocked=await a.call('submit_codex_task',{task:'must be blocked'});
+  assert.equal(blocked.result.isError,true);
+  assert.match(blocked.result.content[0].text,/already active/);
 });

@@ -15,6 +15,13 @@ const workspace = join(root, 'workspace');
 const codexHome = join(root, 'codex-home');
 const claudeHome = join(root, 'claude-home');
 for (const p of [root, jobs, workspace, codexHome]) mkdirSync(p, {recursive:true, mode:0o700});
+// Synthetic tests only: preserve worker crash evidence in the test's temporary directory.
+if(process.argv.includes('--test-mode') && process.argv.includes('--worker') && process.env.FARHAN_BRIDGE_TEST_CAPTURE_CRASH==='1') {
+  process.on('uncaughtExceptionMonitor', error=>{
+    try { writeFileSync(join(root,'test-worker-error.json'),JSON.stringify({name:error.name,code:error.code||null,stack:error.stack}),{mode:0o600}); } catch {}
+  });
+}
+
 function cleanEnv(provider='codex') {
   const env = {...process.env};
   for (const key of Object.keys(env)) {
@@ -168,6 +175,7 @@ async function claudeWorker(job) {
 }
 async function worker(id) {
   let job=load(id); job.status='running';job.started_at=new Date().toISOString();job.worker_pid=process.pid;save(job);
+  if(process.argv.includes('--test-mode') && process.env.FARHAN_BRIDGE_TEST_WORKER_CRASH==='1') throw new Error('synthetic worker crash');
   try {
     if(job.provider==='claude'){await claudeWorker(job);return;}
     const auth=await execute(['login','status']);
